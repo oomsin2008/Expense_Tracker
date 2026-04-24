@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker v3</title>
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Chart.js (ใช้ทีหลังใน Phase 3) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+  <div id="pull-refresh-indicator"
+    class="fixed top-2 left-1/2 -translate-x-1/2 z-50 hidden bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm flex items-center gap-2">
+    <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-blue-500"></i>
+    <span class="text-xs text-slate-500">Refreshing...</span>
+  </div>
+
+  <!-- ========== MOBILE HEADER (ซ่อนบน desktop) ========== -->
+  <header
+    class="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-30 px-4 py-3 flex items-center justify-between">
+    <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+      <i data-lucide="menu" class="w-5 h-5 text-slate-600"></i>
+    </button>
+    <h1 class="font-semibold text-slate-800">Expense Tracker</h1>
+    <div id="mobile-avatar" class="w-8 h-8 rounded-full bg-slate-200"></div>
+  </header>
+
+  <!-- ========== SIDEBAR OVERLAY (mobile only) ========== -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/30 z-30 md:hidden" onclick="toggleSidebar()"></div>
+
+  <!-- ========== SIDEBAR ========== -->
+  <aside id="sidebar"
+    class="sidebar fixed top-0 left-0 h-full w-60 bg-white border-r border-slate-200 z-40 flex flex-col">
+
+    <!-- Logo -->
+    <div class="p-5 border-b border-slate-100">
+      <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+        onclick="TransactionsPage.openModal()">
+        <div class="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+          <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+        </div>
+        <span class="font-bold text-slate-800">Expense Tracker</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <button onclick="navigate('dashboard')"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-all"
+        data-page="dashboard">
+        <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+        <span>Overview</span>
+      </button>
+
+      <button onclick="navigate('transactions')" data-page="transactions"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="arrow-left-right" class="w-5 h-5"></i> Transactions
+      </button>
+      <button onclick="navigate('accounts')" data-page="accounts"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="landmark" class="w-5 h-5"></i> Accounts
+      </button>
+      <button onclick="navigate('investments')" data-page="investments"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="trending-up" class="w-5 h-5"></i> Investments
+      </button>
+      <button onclick="navigate('creditcards')" data-page="creditcards"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="credit-card" class="w-5 h-5"></i> Credit Cards
+      </button>
+      <button onclick="navigate('budgets')" data-page="budgets"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="target" class="w-5 h-5"></i> Budgets
+      </button>
+      <button onclick="navigate('schedules')" data-page="schedules"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="calendar-clock" class="w-5 h-5"></i> Schedules
+      </button>
+      <button onclick="navigate('reports')"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+        data-page="reports">
+        <i data-lucide="bar-chart-2" class="w-5 h-5"></i> Reports
+      </button>
+      <button onclick="navigate('settings')" data-page="settings"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="settings" class="w-5 h-5"></i> Settings
+      </button>
+    </nav>
+
+    <!-- User Profile (ล่างสุด) -->
+    <div id="user-profile" class="p-3 border-t border-slate-100">
+      <div class="flex items-center gap-3 px-3 py-2">
+        <img id="user-avatar" src="" alt="avatar" class="w-9 h-9 rounded-full bg-slate-200 object-cover">
+        <div class="flex-1 min-w-0">
+          <p id="user-name" class="text-sm font-medium text-slate-700 truncate">Loading...</p>
+          <p id="user-email" class="text-xs text-slate-400 truncate">...</p>
+        </div>
+        <button onclick="Auth.signOut()" class="p-1.5 hover:bg-red-50 rounded-lg transition-colors group"
+          title="ออกจากระบบ">
+          <i data-lucide="log-out" class="w-4 h-4 text-slate-400 group-hover:text-red-500"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========== MAIN CONTENT ========== -->
+  <main class="md:ml-60 pt-14 md:pt-0 min-h-screen">
+    <div id="page-content" class="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+
+      <!-- แต่ละ page จะถูก render ตรงนี้โดย navigate() -->
+      <div class="page-transition">
+        <div class="flex flex-col items-center justify-center min-h-[60vh] text-slate-400">
+          <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4"></i>
+          <p>กำลังโหลด...</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Modal Container สำหรับ Transactions (ย้ายมาอยู่นอกสุดเพื่อให้ position: fixed ทำงานถูกต้อง) -->
+  <!-- Shared Modal Containers -->
+  <div id="tx-modal" class="hidden fixed inset-0 z-[60]"></div>
+  <div id="account-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="investment-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="cc-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="settings-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="budget-modal" class="hidden fixed inset-0 z-50"></div>
+
+  <!-- ========== SCRIPTS ========== -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prop-types@15/prop-types.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2.1.12/umd/Recharts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+
+  <script src="js/config.js"></script>
+  <script src="js/toast.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/components/transactions.js"></script>
+  <script src="js/components/accounts.js"></script>
+  <script src="js/components/investments.js"></script>
+  <script type="text/babel" src="js/components/overview.jsx"></script>
+  <script src="js/components/settings.js"></script>
+  <script src="js/components/budgets.js"></script>
+  <script src="js/components/creditcards.js"></script>
+  <script src="js/components/reports.js"></script>
+  <script src="js/components/schedules.js"></script>
+
+  <script>
+    // ===================================================
+    // App Init — ตรวจ auth + โหลดข้อมูล user
+    // ===================================================
+
+    async function initApp() {
+      // Guard: ต้อง login ก่อน
+      const session = await Auth.requireAuth();
+      if (!session) return;
+
+      // แสดงข้อมูล user บน sidebar
+      const user = session.user;
+      document.getElementById('user-name').textContent =
+        (user.user_metadata && user.user_metadata.full_name) || 'User';
+      document.getElementById('user-email').textContent =
+        user.email || '';
+      document.getElementById('user-avatar').src =
+        (user.user_metadata && user.user_metadata.avatar_url) || '';
+
+      // Mobile avatar
+      const mobileAvatar = document.getElementById('mobile-avatar');
+      if (user.user_metadata && user.user_metadata.avatar_url) {
+        mobileAvatar.innerHTML = `<img src="${user.user_metadata.avatar_url}" class="w-8 h-8 rounded-full object-cover">`;
+      }
+
+      // ตรวจสอบและรันรายการล่วงหน้า
+      const processedCount = await DB.processSchedules(user.id);
+      if (processedCount > 0) {
+        Toast.show(`ดำเนินการรายการล่วงหน้าเรียบร้อย ${processedCount} รายการ`, 'success');
+      }
+
+      // ตรวจสอบความละเอียดของเมนู
+      applyMenuVisibility();
+
+      // ตรวจสอบว่ามี hash ใน URL หรือไม่ ถ้าไม่มีให้ใช้ overview
+      const initialPage = window.location.hash.substring(1) || 'overview';
+      navigate(initialPage);
+
+      lucide.createIcons();
+    }
+
+    // ฟังก์ชันจัดการแสดง/ซ่อนเมนู
+    function applyMenuVisibility() {
+      const menuPrefs = JSON.parse(localStorage.getItem('MENU_PREFS') || '{}');
+      const navButtons = document.querySelectorAll('nav .nav-btn');
+      
+      navButtons.forEach(btn => {
+        const pageId = btn.dataset.page;
+        // Settings จะไม่ถูกซ่อนเด็ดขาด
+        if (pageId === 'settings') return;
+
+        const isVisible = menuPrefs[pageId] !== false; // Default is true
+        if (isVisible) {
+          btn.style.display = 'flex';
+        } else {
+          btn.style.display = 'none';
+        }
+      });
+    }
+
+    // ส่งออกให้ SettingsPage เรียกใช้ได้
+    window.applyMenuVisibility = applyMenuVisibility;
+
+    // ===================================================
+    // Navigation — SPA routing (เปลี่ยนเนื้อหาไม่ reload)
+    // ===================================================
+
+    let currentPage = 'overview';
+    let navigating = false;
+
+    function applyEnterTransition(content) {
+      content.style.opacity = '0';
+      content.style.transform = 'translateY(10px)';
+      content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+      requestAnimationFrame(() => {
+        content.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+        
+        // ล้างค่า transform หลังจากจบแอนิเมชันเพื่อให้ fixed position ทำงานได้ถูกต้อง
+        setTimeout(() => {
+          content.style.transform = 'none';
+        }, 250);
+      });
+    }
+
+    async function fadeOutCurrent(content) {
+      content.style.transition = 'opacity 0.15s ease';
+      content.style.opacity = '0';
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    async function navigate(page, updateHash = true) {
+      if (navigating) return;
+      navigating = true;
+
+      // บันทึกหน้าปัจจุบันลง hash (ถ้าไม่ใช่การเรียกจาก popstate)
+      if (updateHash) {
+        window.location.hash = page;
+      }
+
+      const content = document.getElementById('page-content');
+      try {
+        const allowedPages = new Set([
+          'overview', 'dashboard', 'transactions', 'accounts', 'investments',
+          'budgets', 'schedules', 'creditcards', 'reports', 'settings'
+        ]);
+
+        // ตรวจสอบว่าเมนูนี้ถูกซ่อนไว้หรือไม่ (ยกเว้น settings)
+        const menuPrefs = JSON.parse(localStorage.getItem('MENU_PREFS') || '{}');
+        const checkPage = (page === 'overview') ? 'dashboard' : page;
+        if (page !== 'settings' && menuPrefs[checkPage] === false) {
+           // ถ้าถูกซ่อน ให้พาไปหน้า Overview (ถ้า Overview ไม่ซ่อน) หรือหน้า Settings แทน
+           if (menuPrefs['dashboard'] !== false) return navigate('overview');
+           return navigate('settings');
+        }
+
+        if (!allowedPages.has(page)) {
+          content.innerHTML = renderPlaceholder(
+            'alert-triangle',
+            'Not Found',
+            'ไม่พบหน้าที่ต้องการ'
+          );
+          if (window.Toast) Toast.show('ไม่พบหน้าที่ต้องการ', 'error');
+          lucide.createIcons();
+          return;
+        }
+
+        // Highlight active menu
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+          const isActive = btn.dataset.page === page;
+          btn.classList.toggle('bg-blue-50', isActive);
+          btn.classList.toggle('text-blue-600', isActive);
+          btn.classList.toggle('text-slate-600', !isActive);
+        });
+
+        closeSidebar();
+        await fadeOutCurrent(content);
+        content.innerHTML = '';
+        const delayedSpinner = setTimeout(() => {
+          if (content.children.length > 0 || content.innerHTML.trim() !== '') return;
+          content.innerHTML = `
+      <div class="flex items-center justify-center min-h-[60vh] text-slate-400">
+        <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
+      </div>`;
+          lucide.createIcons();
+        }, 250);
+
+        // ดึง user id
+        const session = await Auth.getSession();
+        const userId = session.user.id;
+
+        // Render page ตาม menu ที่กด
+        let html;
+        switch (page) {
+          case 'accounts':
+            AccountsPage.activeFilter = 'all';
+            html = await AccountsPage.render(userId);
+            break;
+          case 'investments':
+            InvestmentsPage.activeFilter = 'all';
+            html = await InvestmentsPage.render(userId);
+            break;
+          case 'settings':
+            html = await SettingsPage.render(userId);
+            break;
+          case 'transactions':
+            html = await TransactionsPage.render(userId, currentPage);
+            break;
+          case 'budgets':
+            html = await BudgetsPage.render(userId);
+            break;
+          case 'schedules':
+            html = await SchedulesPage.render(userId);
+            break;
+          case 'creditcards':
+            html = await CreditCardsPage.render(userId);
+            break;
+
+          case 'overview':
+          case 'dashboard':
+            currentPage = page;
+            await OverviewPage.init(content, userId);
+            clearTimeout(delayedSpinner);
+            applyEnterTransition(content);
+            return;
+          case 'reports':
+            currentPage = page;
+            await ReportsPage.mount();
+            clearTimeout(delayedSpinner);
+            applyEnterTransition(content);
+            return;
+          default:
+            html = renderPlaceholder(
+              'layout-dashboard',
+              page.charAt(0).toUpperCase() + page.slice(1),
+              'ฟีเจอร์นี้กำลังพัฒนา'
+            );
+        }
+
+        content.innerHTML = html;
+        lucide.createIcons();
+        clearTimeout(delayedSpinner);
+        currentPage = page;
+        applyEnterTransition(content);
+      } finally {
+        navigating = false;
+      }
+    }
+
+    // Placeholder สำหรับหน้าที่ยังไม่ได้ทำ
+    function renderPlaceholder(icon, title, description) {
+      return `
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold text-slate-800">${title}</h1>
+        </div>
+        <div class="bg-white rounded-xl shadow-lg p-12 flex flex-col items-center text-center">
+          <div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+            <i data-lucide="${icon}" class="w-8 h-8 text-slate-400"></i>
+          </div>
+          <h2 class="text-lg font-semibold text-slate-700 mb-2">${description}</h2>
+          <p class="text-sm text-slate-400">ฟีเจอร์นี้กำลังพัฒนา — จะเพิ่มใน Phase ถัดไป</p>
+        </div>
+      `;
+    }
+
+    // ===================================================
+    // Sidebar toggle — สำหรับ mobile
+    // ===================================================
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebar-overlay').classList.toggle('hidden');
+    }
+
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.add('hidden');
+    }
+
+    // Pull-to-refresh (mobile)
+    (() => {
+      let startY = 0;
+      let pulling = false;
+      let distance = 0;
+      const maxPull = 90;
+      const trigger = 70;
+      const indicator = document.getElementById('pull-refresh-indicator');
+      const content = document.getElementById('page-content');
+
+      const onStart = (e) => {
+        if (window.innerWidth >= 768) return;
+        if (window.scrollY > 0) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        distance = 0;
+      };
+
+      const onMove = (e) => {
+        if (!pulling) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta <= 0) return;
+        distance = Math.min(delta * 0.45, maxPull); // resistance
+        content.style.transform = `translateY(${distance}px)`;
+        content.style.transition = 'transform 0.05s linear';
+        indicator.classList.remove('hidden');
+        if (distance >= trigger) {
+          indicator.querySelector('span').textContent = 'ปล่อยเพื่อรีเฟรช';
+        } else {
+          indicator.querySelector('span').textContent = 'ดึงลงเพื่อรีเฟรช';
+        }
+        e.preventDefault();
+      };
+
+      const onEnd = async () => {
+        if (!pulling) return;
+        pulling = false;
+        content.style.transition = 'transform 0.2s ease';
+        content.style.transform = 'translateY(0)';
+        if (distance >= trigger) {
+          indicator.classList.remove('hidden');
+          indicator.querySelector('span').textContent = 'Refreshing...';
+          await navigate(currentPage || 'overview');
+        }
+        setTimeout(() => indicator.classList.add('hidden'), 250);
+      };
+
+      window.addEventListener('touchstart', onStart, { passive: true });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onEnd, { passive: true });
+    })();
+
+    // จัดการปุ่ม Back/Forward ของ Browser
+    window.addEventListener('popstate', () => {
+      const page = window.location.hash.substring(1) || 'overview';
+      navigate(page, false);
+    });
+
+    // Helper: เปิดโหมดโอนเงินจากหน้าอื่น
+    window.openTransferModal = (fromAccountId) => {
+      navigate('transactions');
+      // รอให้หน้าโหลดเสร็จก่อน
+      const checkAndOpen = () => {
+        if (typeof TransactionsPage !== 'undefined' && document.getElementById('tx-list-container')) {
+          TransactionsPage.openModal();
+          TransactionsPage.setModalType('transfer');
+          const select = document.getElementById('m-account');
+          if (select) select.value = fromAccountId;
+        } else {
+          setTimeout(checkAndOpen, 50);
+        }
+      };
+      checkAndOpen();
+    };
+
+    // เริ่มแอป!
+    initApp();
+  </script>
+
+
+</body>
+
+</html>
