@@ -1,13 +1,26 @@
 const CACHE_NAME = "expense-tracker-pwa-v1";
 const APP_SHELL = [
-  "./",
+  "./", // index.html
   "./dashboard.html",
-  "./manifest.webmanifest"
+  "./manifest.webmanifest",
+  "./css/styles.css",
+  "./js/config.js",
+  "./js/auth.js",
+  "./js/toast.js",
+  "./pwa-register.js",
+  "./icons/icon-192.png",
+  // Critical CDN assets for offline functionality
+  "https://cdn.tailwindcss.com",
+  "https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log("Service Worker: Caching App Shell");
+      return cache.addAll(APP_SHELL);
+    }).catch((err) => console.error("Failed to cache App Shell:", err))
   );
   self.skipWaiting();
 });
@@ -29,11 +42,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request).catch(() => caches.match("./dashboard.html"))
@@ -42,18 +50,19 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
+    // Strategy: Cache first, then network.
+    // This is good for static assets that don't change often.
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
       }
 
-      return fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
-          return response;
-        })
-        .catch(() => cached);
+      return fetch(event.request).then((networkResponse) => {
+        // If we got a response from the network, cache it for next time.
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+        return networkResponse;
+      });
     })
   );
 });
