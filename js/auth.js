@@ -2,7 +2,7 @@
 // Auth — จัดการ Login, Logout, ตรวจสอบ session
 // ===================================================
 
-const buildAppUrl = (path) => new URL(path, window.location.origin).toString();
+const buildAppUrl = (path) => window.AppUrl.resolve(path);
 
 const Auth = {
 
@@ -10,7 +10,7 @@ const Auth = {
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: buildAppUrl('/dashboard.html')
+          redirectTo: buildAppUrl('dashboard.html')
         }
       });
       if (error) {
@@ -24,7 +24,7 @@ const Auth = {
         Toast.show('ออกจากระบบไม่สำเร็จ', 'error');
         return;
       }
-      window.location.href = buildAppUrl('/index.html');
+      window.location.href = buildAppUrl('index.html');
     },
   
     async getCurrentUser() {
@@ -40,7 +40,7 @@ const Auth = {
     async requireAuth() {
       const session = await this.getSession();
       if (!session) {
-        window.location.href = buildAppUrl('/index.html');
+        window.location.href = buildAppUrl('index.html');
         return null;
       }
       return session;
@@ -49,7 +49,7 @@ const Auth = {
     async redirectIfLoggedIn() {
       const session = await this.getSession();
       if (session) {
-        window.location.href = buildAppUrl('/dashboard.html');
+        window.location.href = buildAppUrl('dashboard.html');
       }
     },
   

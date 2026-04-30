@@ -1,29 +1,34 @@
 const { useState, useEffect, useMemo, useCallback } = React;
 const {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, ComposedChart, Line, Area, ReferenceLine
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ComposedChart, Line, Area, AreaChart, ReferenceLine
 } = Recharts;
 
 const CATEGORY_COLORS = ['#ef4444', '#3b82f6', '#4ade80', '#f59e0b', '#facc15', '#a3e635', '#818cf8', '#fb7185', '#2dd4bf', '#a78bfa'];
 const BLUE_PALETTE = ['#0D47A1', '#1565C0', '#1976D2', '#1E88E5', '#2196F3', '#42A5F5', '#64B5F6', '#90CAF9', '#BBDEFB', '#E3F2FD'];
 const ORANGE_PALETTE = ['#E65100', '#EF6C00', '#F57C00', '#FB8C00', '#FF9800', '#FFA726', '#FFB74D', '#FFCC80', '#FFE0B2', '#FFF3E0'];
+const TRANSFER_KEYWORDS = ['transfer between accounts', 'โอนเงินระหว่างบัญชี', 'transfer+', 'transfer-', 'โอน+', 'โอน-'];
 
 const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allCategories }) => {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [viewMode, setViewMode] = useState('weekly'); // 'weekly', 'monthly', 'yearly'
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [currentMetric, setCurrentMetric] = useState('Net');
+  const [currentMetric, setCurrentMetric] = useState('Net'); // Default to 'Net'
   const [drillDown, setDrillDown] = useState({ category: null, account: null, date: null, type: null });
-  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+
+  const [sortConfig, setSortConfig] = useState({ key: 'amount', direction: 'desc' });
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [showTransfers, setShowTransfers] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 });
+  const [prevYearTransactions, setPrevYearTransactions] = useState([]);
+  const [prevMonthTransactions, setPrevMonthTransactions] = useState([]);
+  const [monthlyBudget, setMonthlyBudget] = useState(0);
 
   useEffect(() => {
     if (window.lucide) lucide.createIcons();
-  }, [viewMode, currentMetric, selectedDate, sortConfig, drillDown, showTransfers, isMenuOpen, transactions]);
+  }, [viewMode, selectedDate, transactions, showTransfers, isMenuOpen]);
 
   // Date Range Logic
   const dateRange = useMemo(() => {
@@ -49,6 +54,17 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
     }
   }, [selectedDate, viewMode]);
 
+  const isTransferTransaction = useCallback((transaction) => {
+    const type = (transaction?.type || '').toLowerCase();
+    const catName = (transaction?.categories?.name || '').toLowerCase();
+    const fromOrTo = (transaction?.from_or_to || '').toLowerCase();
+
+    return type === 'transfer'
+      || TRANSFER_KEYWORDS.some(keyword => catName.includes(keyword) || fromOrTo.includes(keyword))
+      || catName.includes('transfer')
+      || catName.includes('โอน');
+  }, []);
+
   // ดึงข้อมูลเมื่อ Date Range เปลี่ยน (ข้ามรอบแรกเพราะใช้ initialTransactions)
   const isFirstMount = React.useRef(true);
   useEffect(() => {
@@ -59,19 +75,72 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const { data } = await DB.getTransactions(userId, {
-          dateFrom: dateRange.start.toISOString().split('T')[0],
-          dateTo: dateRange.end.toISOString().split('T')[0],
-          limit: 10000,
-          onProgress: (loaded, total) => setLoadProgress({ loaded, total })
-        });
-        setTransactions(data || []);
+        const dateFrom = dateRange.start.toISOString().split('T')[0];
+        const dateTo = dateRange.end.toISOString().split('T')[0];
+        
+        const fetchTasks = [
+          DB.getTransactions(userId, { dateFrom, dateTo, sortBy: 'date', limit: 10000, onProgress: (loaded, total) => setLoadProgress({ loaded, total }) })
+        ];
+
+        // ถ้าเป็นโหมด Yearly ให้ดึงข้อมูลปีก่อนหน้ามาเทียบด้วย
+        if (viewMode === 'yearly') {
+          const prevYearStart = new Date(dateRange.start);
+          prevYearStart.setFullYear(prevYearStart.getFullYear() - 1);
+          const prevYearEnd = new Date(dateRange.end);
+          prevYearEnd.setFullYear(prevYearEnd.getFullYear() - 1);
+
+          fetchTasks.push(DB.getTransactions(userId, {
+            dateFrom: prevYearStart.toISOString().split('T')[0],
+            dateTo: prevYearEnd.toISOString().split('T')[0],
+            sortBy: 'date',
+            limit: 10000
+          }));
+        }
+
+        // ถ้าเป็นโหมด Monthly ให้ดึงข้อมูลเดือนก่อนหน้ามาเทียบด้วย
+        if (viewMode === 'monthly') {
+          const prevMonthStart = new Date(dateRange.start);
+          prevMonthStart.setMonth(prevMonthStart.getMonth() - 1);
+          const prevMonthEnd = new Date(dateRange.end);
+          prevMonthEnd.setMonth(prevMonthEnd.getMonth() - 1);
+
+          fetchTasks.push(DB.getTransactions(userId, {
+            dateFrom: prevMonthStart.toISOString().split('T')[0],
+            dateTo: prevMonthEnd.toISOString().split('T')[0],
+            sortBy: 'date',
+            limit: 10000
+          }));
+
+          // ดึงงบประมาณเฉพาะโหมด Monthly (ใช้แสดง BudgetPace ใน Trend chart)
+          fetchTasks.push(DB.getBudgets(userId));
+        }
+
+        const results = await Promise.all(fetchTasks);
+        setTransactions(results[0].data || []);
+
+        if (viewMode === 'yearly') {
+          setPrevYearTransactions(results[1]?.data || []);
+          setPrevMonthTransactions([]);
+        } else if (viewMode === 'monthly') {
+          setPrevMonthTransactions(results[1]?.data || []);
+          setPrevYearTransactions([]);
+          const budgets = results[2] || [];
+          const totalMonthlyBudget = budgets
+            .filter(b => b.period === 'monthly')
+            .reduce((s, b) => s + parseFloat(b.amount), 0);
+          setMonthlyBudget(totalMonthlyBudget);
+        } else {
+          // weekly: ไม่ต้องการข้อมูล prev period หรือ budget
+          setPrevYearTransactions([]);
+          setPrevMonthTransactions([]);
+        }
+
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, [dateRange, userId]);
+  }, [dateRange, userId, viewMode]);
 
   // Reset drillDown and showAll when viewMode changes
   useEffect(() => {
@@ -135,22 +204,74 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
   };
 
   const baseFilteredData = useMemo(() => {
-    const transferNames = ['transfer between accounts', 'โอนเงินระหว่างบัญชี', 'transfer+', 'transfer-', 'โอน+', 'โอน-'];
     return transactions.filter(t => {
-      const d = new Date(t.date);
-      const catName = (t.categories && t.categories.name) ? t.categories.name.toLowerCase() : '';
-      const isTransfer = transferNames.includes(catName) || catName.includes('transfer') || catName.includes('โอน');
-
-      const passDate = d >= dateRange.start && d <= dateRange.end;
-      if (!passDate) return false;
-
-      if (!showTransfers && isTransfer) return false;
+      if (!showTransfers && isTransferTransaction(t)) return false;
       return true;
     });
-  }, [transactions, dateRange, showTransfers]);
+  }, [transactions, showTransfers, isTransferTransaction]);
+
+  const prevYearFilteredData = useMemo(() => {
+    let data = prevYearTransactions;
+    if (!showTransfers) {
+      data = data.filter(t => !isTransferTransaction(t));
+    }
+    // Apply Category/Account filters to historical data
+    if (drillDown.category) {
+      data = data.filter(t => {
+        const cat = (t.categories && t.categories.name) ? t.categories.name : 'อื่นๆ';
+        return cat === drillDown.category;
+      });
+    }
+    if (drillDown.account) {
+      data = data.filter(t => {
+        const acc = (t.accounts && t.accounts.name) ? t.accounts.name : null;
+        return acc === drillDown.account;
+      });
+    }
+    return data;
+  }, [prevYearTransactions, showTransfers, drillDown.category, drillDown.account, isTransferTransaction]);
+
+  const prevMonthFilteredData = useMemo(() => {
+    let data = prevMonthTransactions;
+    if (!showTransfers) {
+      data = data.filter(t => !isTransferTransaction(t));
+    }
+    // Apply Category/Account filters to historical data
+    if (drillDown.category) {
+      data = data.filter(t => {
+        const cat = (t.categories && t.categories.name) ? t.categories.name : 'อื่นๆ';
+        return cat === drillDown.category;
+      });
+    }
+    if (drillDown.account) {
+      data = data.filter(t => {
+        const acc = (t.accounts && t.accounts.name) ? t.accounts.name : null;
+        return acc === drillDown.account;
+      });
+    }
+    return data;
+  }, [prevMonthTransactions, showTransfers, drillDown.category, drillDown.account, isTransferTransaction]);
+
+  // Data that is filtered by Category/Account/Transfers but NOT by Date
+  const globalFilteredData = useMemo(() => {
+    let data = baseFilteredData;
+    if (drillDown.category) {
+      data = data.filter(t => {
+        const cat = (t.categories && t.categories.name) ? t.categories.name : 'อื่นๆ';
+        return cat === drillDown.category;
+      });
+    }
+    if (drillDown.account) {
+      data = data.filter(t => {
+        const acc = (t.accounts && t.accounts.name) ? t.accounts.name : null;
+        return acc === drillDown.account;
+      });
+    }
+    return data;
+  }, [baseFilteredData, drillDown.category, drillDown.account]);
 
   const dateFilteredData = useMemo(() => {
-    let base = baseFilteredData;
+    let base = globalFilteredData;
     if (drillDown.date) {
       base = base.filter(t => {
         const d = new Date(t.date);
@@ -168,7 +289,7 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
       base = base.filter(t => t.type === drillDown.type);
     }
     return base;
-  }, [baseFilteredData, drillDown.date, drillDown.type, viewMode, dateRange]);
+  }, [globalFilteredData, drillDown.date, drillDown.type, viewMode, dateRange]);
 
   const allocationData = useMemo(() => {
     const map = {};
@@ -213,21 +334,17 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
     if (sortConfig.key !== null) {
       sortableData.sort((a, b) => {
         let aValue, bValue;
-        if (sortConfig.key === 'category') aValue = (a.categories && a.categories.name) || 'อื่นๆ';
-        else if (sortConfig.key === 'account') aValue = (a.accounts && a.accounts.name) || 'อื่นๆ';
-        else aValue = a[sortConfig.key];
+        if (sortConfig.key === 'category') { aValue = (a.categories && a.categories.name) || 'อื่นๆ'; bValue = (b.categories && b.categories.name) || 'อื่นๆ'; }
+        else if (sortConfig.key === 'account') { aValue = (a.accounts && a.accounts.name) || 'อื่นๆ'; bValue = (b.accounts && b.accounts.name) || 'อื่นๆ'; }
+        else if (sortConfig.key === 'amount') { aValue = parseFloat(a.amount || 0); bValue = parseFloat(b.amount || 0); }
+        else { aValue = a[sortConfig.key]; bValue = b[sortConfig.key]; }
 
-        if (sortConfig.key === 'category') bValue = (b.categories && b.categories.name) || 'อื่นๆ';
-        else if (sortConfig.key === 'account') bValue = (b.accounts && b.accounts.name) || 'อื่นๆ';
-        else bValue = b[sortConfig.key];
-
-        // Type conversion for numerical sorting
-        if (sortConfig.key === 'amount') {
-          // ถ้าเป็น expense ให้ถือว่าเป็นค่าติดลบเพื่อให้เรียงลำดับคณิตศาสตร์ถูกต้อง (+ มากกว่า -)
-          aValue = parseFloat(a.amount) * (a.type === 'expense' ? -1 : 1);
-          bValue = parseFloat(b.amount) * (b.type === 'expense' ? -1 : 1);
+        // Handle string comparison for non-numeric keys
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return sortConfig.direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
         }
 
+        // Handle numeric/date comparison
         if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -237,9 +354,9 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
   }, [filteredData, sortConfig]);
 
   const requestSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
+    let direction = key === 'amount' ? 'desc' : 'asc';
+    if (sortConfig.key === key) {
+      direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
     }
     setSortConfig({ key, direction });
   };
@@ -249,13 +366,13 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
     const income = filteredData.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
     const expense = filteredData.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
     const investmentProfit = allAccounts
-      .filter(a => ['investment', 'mutual_fund', 'stock', 'gold'].includes(a.type))
+      .filter(a => a && ['investment', 'mutual_fund', 'stock', 'gold'].includes(a.type))
       .reduce((s, a) => {
         const inv = (a.investments && a.investments[0]) ? a.investments[0] : null;
         return s + (inv ? (Number(inv.current_value) - Number(inv.invested_amount)) : 0);
       }, 0);
     const creditDebt = allAccounts
-      .filter(a => a.type === 'credit_card')
+      .filter(a => a && a.type === 'credit_card')
       .reduce((s, a) => s + Math.abs(Number(a.balance || 0)), 0);
     const net = income - expense;
     const savingsRate = income > 0 ? (net / income) * 100 : 0;
@@ -273,8 +390,8 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
         d.setDate(d.getDate() + i);
         const dateStr = d.toISOString().split('T')[0];
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-        const inc = baseFilteredData.filter(t => t.date === dateStr && t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-        const exp = baseFilteredData.filter(t => t.date === dateStr && t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const inc = globalFilteredData.filter(t => t.date === dateStr && t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const exp = globalFilteredData.filter(t => t.date === dateStr && t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
         const netVal = inc - exp;
         const rate = inc > 0 ? (netVal / inc) * 100 : 0;
         data.push({ name: dayName, dateKey: dateStr, Income: inc, Expense: exp, Net: netVal, SavingsRate: rate });
@@ -287,7 +404,7 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
         const wEnd = new Date(current);
         wEnd.setDate(wEnd.getDate() + 6);
         if (wEnd > dateRange.end) wEnd.setTime(dateRange.end.getTime());
-        const trans = baseFilteredData.filter(t => { const d = new Date(t.date); return d >= wStart && d <= wEnd; });
+        const trans = globalFilteredData.filter(t => { const d = new Date(t.date); return d >= wStart && d <= wEnd; });
         const inc = trans.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
         const exp = trans.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
         const netVal = inc - exp;
@@ -297,10 +414,9 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
         weekIdx++;
       }
     } else {
-      // Yearly: Break down by month
       for (let m = 0; m < 12; m++) {
         const year = dateRange.start.getFullYear();
-        const trans = baseFilteredData.filter(t => {
+        const trans = globalFilteredData.filter(t => {
           const d = new Date(t.date);
           return d.getFullYear() === year && d.getMonth() === m;
         });
@@ -312,7 +428,84 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
       }
     }
     return data;
-  }, [baseFilteredData, dateRange, viewMode]);
+  }, [globalFilteredData, dateRange, viewMode]);
+
+  const trendData = useMemo(() => {
+    const data = [];
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    if (viewMode === 'weekly') {
+      let totalExp = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(dateRange.start);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+        const exp = globalFilteredData.filter(t => t.date === dateStr && t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
+        totalExp += exp;
+        data.push({ name: dayName, Expense: exp, dateKey: dateStr });
+      }
+      const avg = totalExp / 7;
+      data.forEach(item => item.Average = avg);
+    } else if (viewMode === 'monthly') {
+      let current = new Date(dateRange.start);
+      let weekIdx = 0;
+      let cumulativeExp = 0;
+      let prevCumulativeExp = 0;
+      const totalWeeks = Math.ceil((dateRange.end - dateRange.start) / (1000 * 60 * 60 * 24 * 7));
+      
+      const pmStart = new Date(dateRange.start);
+      pmStart.setMonth(pmStart.getMonth() - 1);
+
+      while (current <= dateRange.end) {
+        const wStart = new Date(current);
+        const wEnd = new Date(current);
+        wEnd.setDate(wEnd.getDate() + 6);
+        
+        // Previous Month Window
+        const pwStart = new Date(wStart);
+        pwStart.setMonth(pwStart.getMonth() - 1);
+        const pwEnd = new Date(wEnd);
+        pwEnd.setMonth(pwEnd.getMonth() - 1);
+
+        const trans = globalFilteredData.filter(t => { const d = new Date(t.date); return d >= wStart && d <= wEnd; });
+        const exp = trans.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
+        cumulativeExp += exp;
+
+        const pTrans = prevMonthFilteredData.filter(t => { const d = new Date(t.date); return d >= pwStart && d <= pwEnd; });
+        const pExp = pTrans.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
+        prevCumulativeExp += pExp;
+
+        data.push({ 
+          name: `W${weekIdx + 1}`, 
+          CumulativeExpense: cumulativeExp,
+          PrevMonthCumulative: prevCumulativeExp,
+          BudgetPace: (monthlyBudget / totalWeeks) * (weekIdx + 1)
+        });
+        current.setDate(current.getDate() + 7);
+        weekIdx++;
+      }
+    } else {
+      const year = dateRange.start.getFullYear();
+      const monthlyTotals = [];
+      for (let m = 0; m < 12; m++) {
+        const exp = globalFilteredData.filter(t => {
+          const d = new Date(t.date);
+          return d.getFullYear() === year && d.getMonth() === m && t.type === 'expense';
+        }).reduce((s, t) => s + parseFloat(t.amount), 0);
+        const prevExp = prevYearFilteredData.filter(t => {
+          const d = new Date(t.date);
+          return d.getMonth() === m && t.type === 'expense';
+        }).reduce((s, t) => s + parseFloat(t.amount), 0);
+        monthlyTotals.push({ name: monthNames[m], Expense: exp, PrevYearExpense: prevExp, dateKey: m });
+      }
+      const sorted = [...monthlyTotals].sort((a,b) => b.Expense - a.Expense);
+      const top3 = sorted.slice(0, 3).map(m => m.name);
+      monthlyTotals.forEach(m => m.isTopMonth = top3.includes(m.name));
+      data.push(...monthlyTotals);
+    }
+    return data;
+  }, [globalFilteredData, dateRange, viewMode, monthlyBudget, prevYearFilteredData, prevMonthFilteredData]);
 
   // Chart Rankings
   const categoryRanking = useMemo(() => {
@@ -379,17 +572,17 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
     console.log('Editing transaction:', txId);
     if (window.TransactionsPage) {
       // ตรวจสอบและเติมข้อมูลที่จำเป็นให้ TransactionsPage
-      if (!window.TransactionsPage.transactions || window.TransactionsPage.transactions.length === 0) {
-        window.TransactionsPage.transactions = allTransactions;
-      }
       if (!window.TransactionsPage.accounts || window.TransactionsPage.accounts.length === 0) {
         window.TransactionsPage.accounts = allAccounts;
       }
       if (!window.TransactionsPage.categories || window.TransactionsPage.categories.length === 0) {
         window.TransactionsPage.categories = allCategories || [];
       }
+      // ใช้ state 'transactions' ที่มีข้อมูลของช่วงเวลาปัจจุบัน
+      window.TransactionsPage.transactions = transactions;
 
-      const tx = allTransactions.find(t => t.id === txId);
+      // ค้นหา transaction จาก state ปัจจุบัน
+      const tx = transactions.find(t => t.id === txId);
       if (tx) {
         // อัปเดตข้อมูลใน TransactionsPage เผื่อมีการแก้ไข
         const idx = window.TransactionsPage.transactions.findIndex(t => t.id === txId);
@@ -499,20 +692,20 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
       )}
 
       {/* HEADER SECTION */}
-      <div className="bg-white p-3 md:p-6 rounded-2xl shadow-sm border border-purple-100 flex flex-col md:flex-row justify-between items-center gap-3 md:gap-6">
-        <div className="flex items-center justify-between w-full md:w-auto gap-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 md:p-3 bg-purple-600 text-white rounded-xl md:rounded-2xl shadow-lg flex-shrink-0">
+      <div className="bg-white p-4 md:p-6 rounded-3xl shadow-sm border border-purple-100 flex flex-col gap-4 md:gap-6">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 md:p-3 bg-purple-600 text-white rounded-2xl shadow-lg flex-shrink-0">
               <i data-lucide="layout-dashboard" className="w-5 h-5 md:w-6 md:h-6"></i>
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm md:text-xl font-black text-[#4A148C] tracking-tight truncate">Periodic</h2>
-              <p className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none truncate">Health Monitor</p>
+              <h2 className="text-base md:text-xl font-black text-[#4A148C] tracking-tight truncate">Periodic</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none truncate">Health Monitor</p>
             </div>
           </div>
 
-          {/* Mobile Metric Selector (Moved here for 1-line top row on mobile) */}
-          <div className="flex md:hidden bg-slate-100 p-0.5 rounded-full border border-slate-200">
+          {/* Metric Selector (Mobile & Tablet) */}
+          <div className="flex bg-slate-100 p-0.5 rounded-full border border-slate-200">
             {[
               { m: 'Income', icon: 'arrow-down-left' },
               { m: 'Expense', icon: 'arrow-up-right' },
@@ -521,56 +714,59 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
               <button
                 key={item.m}
                 onClick={() => setCurrentMetric(item.m)}
-                className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${currentMetric === item.m ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500'}`}
+                className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-full transition-all ${currentMetric === item.m ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500'}`}
               >
-                <i data-lucide={item.icon} className="w-3.5 h-3.5"></i>
+                <i data-lucide={item.icon} className="w-3.5 h-3.5 md:w-4 md:h-4"></i>
               </button>
             ))}
           </div>
         </div>
 
+        {/* PERIOD & VIEW SELECTORS */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-50">
+          {/* View Mode Toggle */}
+          <div className="flex bg-slate-100 p-1 rounded-full border border-slate-200 shadow-inner w-full sm:w-auto justify-center">
+            {['weekly', 'monthly', 'yearly'].map(m => (
+              <button key={m} onClick={() => setViewMode(m)} className={`px-4 md:px-5 py-1.5 rounded-full text-[10px] font-black transition-all flex-1 sm:flex-none ${viewMode === m ? 'bg-white text-[#4A148C] shadow-md' : 'text-slate-500'}`}>
+                {m.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-        {/* PERIOD & METRIC SELECTORS */}
-        <div className="flex flex-col items-center gap-3 w-full md:w-auto">
-          <div className="flex flex-row items-center justify-between md:justify-center gap-2 md:gap-4 w-full md:w-auto">
-            {/* View Mode Toggle */}
-            <div className="flex bg-slate-100 p-0.5 md:p-1 rounded-full border border-slate-200 shadow-inner">
-              {['weekly', 'monthly', 'yearly'].map(m => (
-                <button key={m} onClick={() => setViewMode(m)} className={`px-3 md:px-5 py-1 md:py-1.5 rounded-full text-[9px] md:text-[10px] font-black transition-all ${viewMode === m ? 'bg-white text-[#4A148C] shadow-md' : 'text-slate-500'}`}>
-                  <span className="md:hidden">{m === 'weekly' ? 'W' : m === 'monthly' ? 'M' : 'Y'}</span>
-                  <span className="hidden md:inline">{m.toUpperCase()}</span>
-                </button>
-              ))}
-            </div>
+        {/* Date Selector */}
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+            <button onClick={() => changePeriod(-1)} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform">
+              <i data-lucide="chevron-left" className="w-4 h-4"></i>
+            </button>
 
-            {/* Desktop Metric Toggle */}
-            <div className="hidden md:flex bg-slate-100 p-1 rounded-full border border-slate-200 shadow-inner">
-              {[
-                { m: 'Income', icon: 'arrow-down-left' },
-                { m: 'Expense', icon: 'arrow-up-right' },
-                { m: 'Net', icon: 'scale' }
-              ].map(item => (
-                <button
-                  key={item.m}
-                  onClick={() => setCurrentMetric(item.m)}
-                  title={item.m}
-                  className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${currentMetric === item.m ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  <i data-lucide={item.icon} className="w-4 h-4"></i>
-                </button>
-              ))}
-            </div>
+            <span className="text-[11px] md:text-sm font-black text-[#4A148C] px-2 min-w-[100px] text-center whitespace-nowrap">{label}</span>
 
-            {/* Date Selector */}
-            <div className="flex items-center gap-2 md:gap-4">
-              <button onClick={() => changePeriod(-1)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm">
-                <i data-lucide="chevron-left" className="w-3.5 h-3.5 md:w-4 md:h-4"></i>
+            <button onClick={() => changePeriod(1)} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform">
+              <i data-lucide="chevron-right" className="w-4 h-4"></i>
+            </button>
+
+            <div className="flex items-center gap-2 ml-auto sm:ml-2">
+              <button
+                onClick={() => setShowTransfers(!showTransfers)}
+                title={showTransfers ? 'แสดงรายการโอน' : 'ซ่อนรายการโอน'}
+                aria-label={showTransfers ? 'แสดงรายการโอน' : 'ซ่อนรายการโอน'}
+                className={`flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${showTransfers
+                  ? 'bg-blue-500 text-white border-blue-500 shadow-blue-100'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                  } px-2 py-2 sm:px-3 sm:py-1.5`}
+              >
+                <i data-lucide={showTransfers ? "eye" : "eye-off"} className="w-4 h-4"></i>
+                <span className="hidden sm:inline whitespace-nowrap">{showTransfers ? 'แสดงรายการโอน' : 'ซ่อนรายการโอน'}</span>
               </button>
 
-              <span className="text-[11px] md:text-sm font-black text-[#4A148C] min-w-[80px] md:min-w-[120px] text-center">{label}</span>
-
-              <button onClick={() => changePeriod(1)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm">
-                <i data-lucide="chevron-right" className="w-3.5 h-3.5 md:w-4 md:h-4"></i>
+              <button
+                onClick={handleResetFilters}
+                title="รีเซ็ตฟิลเตอร์"
+                aria-label="รีเซ็ตฟิลเตอร์"
+                className="flex items-center justify-center gap-2 px-2 py-2 sm:px-3 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all border border-slate-200 shadow-sm"
+              >
+                <i data-lucide="rotate-ccw" className="w-4 h-4"></i>
+                <span className="hidden sm:inline whitespace-nowrap">รีเซ็ตฟิลเตอร์</span>
               </button>
             </div>
           </div>
@@ -586,30 +782,6 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
       </div>
 
       {/* CHARTS ROW 1: Efficiency & Trend */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Toggle Transfers */}
-        <button
-          onClick={() => setShowTransfers(!showTransfers)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${showTransfers
-            ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-100'
-            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          <i data-lucide={showTransfers ? "eye" : "eye-off"} className="w-3.5 h-3.5"></i>
-          {showTransfers ? 'แสดงรายการโอน' : 'ซ่อนรายการโอน'}
-        </button>
-
-        {/* Reset Filters */}
-        <button
-          onClick={handleResetFilters}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all border border-slate-200 shadow-sm"
-        >
-          <i data-lucide="rotate-ccw" className="w-3.5 h-3.5"></i>
-          รีเซ็ตฟิลเตอร์
-        </button>
-
-        <div className="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1"></div>
-      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[400px]">
           <div className="flex items-center gap-3 mb-6">
@@ -663,35 +835,51 @@ const OverviewDashboard = ({ userId, initialTransactions = [], allAccounts, allC
           </div>
           <div className="flex-1 w-full h-full min-h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={efficiencyData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? (v / 1000) + 'k' : v} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} formatter={(val) => Number(val).toLocaleString()} />
-                <Bar
-                  dataKey={currentMetric === 'Net' ? 'Net' : currentMetric}
-                  radius={[4, 4, 0, 0]}
-                  barSize={20}
-                  onClick={(d) => handleToggleDrillDown('date', d.dateKey)}
-                  cursor="pointer"
-                  label={(props) => renderCustomLabel({ ...props, maxLabels: 999 })}
-                >
-                  {efficiencyData.map((entry, index) => {
-                    const val = entry[currentMetric === 'Net' ? 'Net' : currentMetric];
-                    const baseFill = currentMetric === 'Net'
-                      ? (val < 0 ? '#ef476f' : '#3a86ff')
-                      : (currentMetric === 'Income' ? '#60d394' : '#f43f5e');
-
-                    return (
-                      <Cell
-                        key={`cell-trend-${index}`}
-                        fill={baseFill}
-                        fillOpacity={drillDown.date === entry.dateKey ? 1 : (drillDown.date !== null ? 0.3 : 1)}
-                      />
-                    );
-                  })}
-                </Bar>
-              </BarChart>
+              {viewMode === 'weekly' ? (
+                <BarChart data={trendData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? (v / 1000) + 'k' : v} />
+                  <Tooltip cursor={{ fill: '#f8fafc' }} formatter={(val) => Number(val).toLocaleString()} />
+                  <ReferenceLine y={trendData[0]?.Average} stroke="#fb7185" strokeDasharray="3 3" label={{ position: 'right', value: 'AVG', fill: '#fb7185', fontSize: 10, fontWeight: 'bold' }} />
+                  <Bar dataKey="Expense" radius={[4, 4, 0, 0]} barSize={30} onClick={(d) => handleToggleDrillDown('date', d.dateKey)} cursor="pointer">
+                    {trendData.map((entry, index) => (
+                      <Cell key={`cell-weekly-${index}`} fill={entry.Expense > entry.Average ? '#fb7185' : '#2dd4bf'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : viewMode === 'monthly' ? (
+                <ComposedChart data={trendData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? (v / 1000) + 'k' : v} />
+                  <Tooltip formatter={(val) => Number(val).toLocaleString()} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                  <defs>
+                    <linearGradient id="colorCumulative" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <Area type="monotone" dataKey="CumulativeExpense" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorCumulative)" name="Current Month" />
+                  <Line type="monotone" dataKey="PrevMonthCumulative" stroke="#94a3b8" strokeDasharray="5 5" dot={false} strokeWidth={2} name="Prev Month" />
+                  <Line type="monotone" dataKey="BudgetPace" stroke="#3b82f6" strokeDasharray="5 5" dot={false} strokeWidth={2} name="Budget Pace" />
+                </ComposedChart>
+              ) : (
+                <ComposedChart data={trendData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? (v / 1000) + 'k' : v} />
+                  <Tooltip cursor={{ fill: '#f8fafc' }} formatter={(val) => Number(val).toLocaleString()} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                  <Bar dataKey="Expense" radius={[4, 4, 0, 0]} barSize={25} onClick={(d) => handleToggleDrillDown('date', d.dateKey)} cursor="pointer" name="This Year">
+                    {trendData.map((entry, index) => (
+                      <Cell key={`cell-yearly-${index}`} fill={entry.isTopMonth ? '#f59e0b' : '#c4b5fd'} />
+                    ))}
+                  </Bar>
+                  <Line type="monotone" dataKey="PrevYearExpense" stroke="#94a3b8" strokeDasharray="5 5" dot={{ r: 2 }} strokeWidth={2} name="Prev Year" />
+                </ComposedChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
@@ -1041,6 +1229,7 @@ window.OverviewPage = {
         DB.getTransactions(userId, {
           dateFrom: firstDay,
           dateTo: lastDay,
+          sortBy: 'date',
           limit: 10000,
           onProgress: updateProgress
         }),
