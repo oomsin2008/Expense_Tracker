@@ -1,4 +1,4 @@
-const CACHE_NAME = "expense-tracker-pwa-v1";
+const CACHE_NAME = "expense-tracker-pwa-v2";
 const APP_SHELL = [
   "./", // index.html
   "./dashboard.html",
@@ -9,6 +9,9 @@ const APP_SHELL = [
   "./js/toast.js",
   "./pwa-register.js",
   "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-192-maskable.png",
+  "./icons/icon-512-maskable.png",
   // Critical CDN assets for offline functionality
   "https://cdn.tailwindcss.com",
   "https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js",

@@ -14,11 +14,58 @@ const SettingsPage = {
   activeAccountTab: 'accounts', // accounts, investments, creditcards
   activeCategoryTab: 'expense', // expense, income
   showDefaultCategories: true, // แสดงหมวดหมู่เริ่มต้นหรือไม่
+  _pwaListenerAttached: false,
+
+  _canInstallApp() {
+    return !!window.PWAInstallPrompt?.canInstall;
+  },
+
+  async installPwaApp() {
+    const installState = window.PWAInstallPrompt;
+    if (!installState?.event) {
+      Toast.show('ยังไม่พร้อมติดตั้งแอปใน browser นี้', 'error');
+      return;
+    }
+
+    installState.event.prompt();
+    const choice = await installState.event.userChoice.catch(() => null);
+    installState.event = null;
+    installState.canInstall = false;
+
+    if (choice?.outcome === 'accepted') {
+      Toast.show('ติดตั้งแอปสำเร็จ', 'success');
+    } else {
+      Toast.show('ยกเลิกการติดตั้งแอป', 'info');
+    }
+
+    if (this.activeTab === 'profile') {
+      document.getElementById('settings-content').innerHTML = await this._renderTab(await DB.getProfile(this.userId));
+      lucide.createIcons();
+    }
+  },
+
+  _attachPwaListeners() {
+    if (this._pwaListenerAttached) return;
+    this._pwaListenerAttached = true;
+
+    const rerender = async () => {
+      if (this.activeTab !== 'profile') return;
+      const profile = await DB.getProfile(this.userId);
+      const content = document.getElementById('settings-content');
+      if (!content) return;
+      content.innerHTML = await this._renderTab(profile);
+      lucide.createIcons();
+    };
+
+    window.addEventListener('pwa-install-available', rerender);
+    window.addEventListener('pwa-install-changed', rerender);
+  },
 
   // ===== RENDER หน้าหลัก =====
 
   async render(userId) {
     this.userId = userId;
+    this._attachPwaListeners();
     const [categories, accounts, profile] = await Promise.all([
       DB.getCategories(userId),
       DB.getAccounts(userId),
@@ -30,9 +77,18 @@ const SettingsPage = {
     return `
         <div class="page-transition">
           <!-- Header -->
-          <div class="mb-6">
-            <h1 class="text-2xl font-bold text-slate-800">Settings</h1>
-            <p class="text-sm text-slate-500 mt-1">ตั้งค่าโปรไฟล์และหมวดหมู่</p>
+          <div class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <h1 class="text-2xl font-bold text-slate-800">Settings</h1>
+              <p class="text-sm text-slate-500 mt-1">ตั้งค่าโปรไฟล์และหมวดหมู่</p>
+            </div>
+            <button
+              onclick="SettingsPage.installPwaApp()"
+              class="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-slate-900 text-white border border-slate-900 shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all"
+              title="Install App"
+              aria-label="Install App">
+              <i data-lucide="download" class="w-5 h-5"></i>
+            </button>
           </div>
   
           <!-- Tabs -->
@@ -348,7 +404,9 @@ const SettingsPage = {
             </h3>
             <div class="flex items-center justify-between mb-6">
                 <p class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">เลือกหมวดหมู่รายรับสำหรับกราฟแนวโน้ม</p>
-                <button onclick="SettingsPage.resetReportIncomeCatSelection()" class="text-xs font-medium text-blue-500 hover:underline">รีเซ็ต</button>
+                <button onclick="SettingsPage.resetReportIncomeCatSelection()" class="inline-flex items-center justify-center w-9 h-9 rounded-xl text-blue-500 hover:bg-blue-50 transition-colors" title="รีเซ็ต" aria-label="รีเซ็ต">
+                  <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
             </div>
             <div id="report-income-cat-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               ${this._renderReportIncomeCatSelector()}
@@ -461,6 +519,7 @@ const SettingsPage = {
   resetReportIncomeCatSelection() {
       localStorage.removeItem('REPORT_INCOME_TREND_CATS');
       this.refreshReportIncomeCatSelector();
+      Toast.show('รีเซ็ตการตั้งค่ารายงานแล้ว', 'success');
   },
 
   // ===== TAB: ACCOUNTS MANAGEMENT =====
