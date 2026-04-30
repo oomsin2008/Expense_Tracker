@@ -5,19 +5,18 @@
 const ReportsPage = {
     charts: {},
     currentData: {},
-    viewMode: 'monthly', // 'monthly', 'yearly'
-    selectedDate: new Date(),
     dateRange: {
         start: null,
         end: null
     },
-    topExpenseTrendCount: 5, // เฉพาะสำหรับกราฟแนวโน้มรายจ่าย
+    topTrendCount: 5, // เฉพาะสำหรับกราฟแนวโน้ม
     showTransfers: false,
 
     /**
      * Initialize the reports page
      */
     init() {
+        this.setupDateDefaults();
         this.bindEvents();
     },
 
@@ -25,27 +24,12 @@ const ReportsPage = {
      * Set default date range (current month)
      */
     setupDateDefaults() {
-        this.selectedDate = new Date();
-        this._calculateDateRange();
-    },
-
-    _calculateDateRange() {
-        const d = new Date(this.selectedDate);
-        if (this.viewMode === 'yearly') {
-            const start = new Date(d.getFullYear(), 0, 1);
-            const end = new Date(d.getFullYear(), 11, 31);
-            this.dateRange = { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
-        } else { // 'monthly'
-            const start = new Date(d.getFullYear(), d.getMonth(), 1);
-            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-            this.dateRange = { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
-        }
-    },
-
-    _getLabel() {
-        const d = new Date(this.selectedDate);
-        if (this.viewMode === 'yearly') return d.getFullYear().toString();
-        return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        
+        this.dateRange.end = lastDay.toISOString().split('T')[0];
+        this.dateRange.start = firstDay.toISOString().split('T')[0];
     },
 
     /**
@@ -67,34 +51,49 @@ const ReportsPage = {
                     </div>
                     
                     <!-- Filter Toolbar -->
-                    <div class="flex flex-wrap items-center justify-end gap-3">
-                        <!-- View Mode Toggle -->
-                        <div class="flex bg-slate-100 p-1 rounded-full border border-slate-200 shadow-inner">
-                            <button onclick="ReportsPage.setViewMode('monthly')" class="px-4 py-1.5 rounded-full text-xs font-bold transition-all ${this.viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500'}">
-                                รายเดือน
+                    <div class="flex flex-wrap items-center gap-3 bg-slate-50/50 p-2 rounded-2xl border border-slate-100">
+                        <!-- Quick Ranges -->
+                        <div class="flex items-center gap-1 px-2 py-1 bg-white rounded-xl border border-slate-200 shadow-sm">
+                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 ml-1">ย้อนหลัง</span>
+                            <button onclick="ReportsPage.setRangeMonths(1)" class="px-3 py-1 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all">1 เดือน</button>
+                            <button onclick="ReportsPage.setRangeMonths(2)" class="px-3 py-1 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all">2 เดือน</button>
+                            <button onclick="ReportsPage.setRangeMonths(3)" class="px-3 py-1 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all">3 เดือน</button>
+                        </div>
+
+                        <!-- Date Range -->
+                        <div class="flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">จาก</span>
+                                <input type="date" id="report-start-date" value="${this.dateRange.start}"
+                                    class="bg-transparent border-none text-xs font-bold text-slate-700 outline-none focus:ring-0 w-28">
+                            </div>
+                            <div class="w-px h-4 bg-slate-200"></div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">ถึง</span>
+                                <input type="date" id="report-end-date" value="${this.dateRange.end}"
+                                    class="bg-transparent border-none text-xs font-bold text-slate-700 outline-none focus:ring-0 w-28">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 ml-auto">
+                            <button onclick="ReportsPage.applyFilter()" 
+                                class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all flex items-center gap-2">
+                                <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+                                กรองข้อมูล
                             </button>
-                            <button onclick="ReportsPage.setViewMode('yearly')" class="px-4 py-1.5 rounded-full text-xs font-bold transition-all ${this.viewMode === 'yearly' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-500'}">
-                                รายปี
+                            <button onclick="ReportsPage.resetFilter()" 
+                                class="px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 transition-all">
+                                รีเซ็ต
                             </button>
                         </div>
 
-                        <!-- Date Selector -->
-                        <div class="flex items-center justify-end gap-1 bg-white p-1 rounded-full border border-slate-200 shadow-sm">
-                            <button onclick="ReportsPage.changePeriod(-1)" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all">
-                                <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                            </button>
-                            <span class="text-xs font-bold text-slate-700 px-2 min-w-[120px] text-center">${this._getLabel()}</span>
-                            <button onclick="ReportsPage.changePeriod(1)" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all">
-                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                            </button>
-                        </div>
+                        <div class="hidden sm:block w-px h-8 bg-slate-200 mx-1"></div>
 
                         <!-- Visibility Toggle -->
                         <button onclick="ReportsPage.toggleTransfers()" 
                             id="report-transfer-toggle"
                             class="px-4 py-2 ${this.showTransfers ? 'bg-blue-500 text-white shadow-blue-100' : 'bg-white text-slate-500'} border border-slate-200 rounded-xl text-xs font-bold hover:shadow-md transition-all flex items-center gap-2">
                             <i data-lucide="${this.showTransfers ? 'eye' : 'eye-off'}" class="w-3.5 h-3.5"></i>
-                            <span class="hidden sm:inline">${this.showTransfers ? 'แสดงโอน' : 'ซ่อนโอน'}</span>
+                            ${this.showTransfers ? 'แสดงรายการโอน' : 'ซ่อนรายการโอน'}
                         </button>
                     </div>
                 </div>
@@ -117,16 +116,34 @@ const ReportsPage = {
                 </div>
 
                 <div id="reports-charts-wrap" class="space-y-6">
-                <!-- Net Worth Mixed Chart -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-                            <i data-lucide="gem" class="w-5 h-5 text-indigo-500"></i>
-                            มูลค่าทรัพย์สินคงเหลือสะสม (Net Worth)
-                        </h3>
+                <!-- Charts Grid Row 1 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Pie Chart -->
+                    <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                                <i data-lucide="pie-chart" class="w-5 h-5 text-blue-500"></i>
+                                สัดส่วนรายจ่ายตามหมวดหมู่
+                            </h3>
+                            <span class="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">แสดงทั้งหมด</span>
+                        </div>
+                        <div class="relative h-64">
+                            <canvas id="expensePieChart"></canvas>
+                        </div>
+                        <div id="pie-legend" class="mt-4 space-y-2 max-h-40 overflow-y-auto"></div>
                     </div>
-                    <div class="relative h-80">
-                        <canvas id="netWorthMixedChart"></canvas>
+
+                    <!-- Bar Chart -->
+                    <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                                <i data-lucide="bar-chart-2" class="w-5 h-5 text-purple-500"></i>
+                                รายรับ vs รายจ่ายรายเดือน
+                            </h3>
+                        </div>
+                        <div class="relative h-64">
+                            <canvas id="monthlyBarChart"></canvas>
+                        </div>
                     </div>
                 </div>
 
@@ -165,59 +182,15 @@ const ReportsPage = {
                         </h3>
                         <div class="flex items-center gap-3 px-3 py-1 bg-slate-50 rounded-lg border border-slate-100">
                             <span class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">แสดงสูงสุด:</span>
-                            <input type="range" id="top-expense-trend-slider" 
-                                min="3" max="15" value="${this.topExpenseTrendCount}"
-                                oninput="ReportsPage.updateTopExpenseTrendCount(this.value)"
+                            <input type="range" id="top-trend-slider" 
+                                min="3" max="15" value="${this.topTrendCount}"
+                                oninput="ReportsPage.updateTopTrendCount(this.value)"
                                 class="w-20 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500">
-                            <span id="top-expense-trend-val" class="text-xs font-bold text-orange-600 w-4">${this.topExpenseTrendCount}</span>
+                            <span id="top-trend-val" class="text-xs font-bold text-orange-600 w-4">${this.topTrendCount}</span>
                         </div>
                     </div>
                     <div class="relative h-72">
-                        <canvas id="expenseTrendMultiLineChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Income Multi-line Chart -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-                            <i data-lucide="trending-up" class="w-5 h-5 text-emerald-500"></i>
-                            แนวโน้มรายรับ (ตามหมวดหมู่ที่เลือก)
-                        </h3>
-                    </div>
-                    <div class="relative h-72">
-                        <canvas id="incomeTrendMultiLineChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Charts Grid Row (Moved to bottom) -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <!-- Pie Chart -->
-                    <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-                                <i data-lucide="pie-chart" class="w-5 h-5 text-blue-500"></i>
-                                สัดส่วนรายจ่ายตามหมวดหมู่
-                            </h3>
-                            <span class="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">แสดงทั้งหมด</span>
-                        </div>
-                        <div class="relative h-64">
-                            <canvas id="expensePieChart"></canvas>
-                        </div>
-                        <div id="pie-legend" class="mt-4 space-y-2 max-h-40 overflow-y-auto"></div>
-                    </div>
-
-                    <!-- Bar Chart -->
-                    <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-                                <i data-lucide="bar-chart-2" class="w-5 h-5 text-purple-500"></i>
-                                รายรับ vs รายจ่ายรายเดือน
-                            </h3>
-                        </div>
-                        <div class="relative h-64">
-                            <canvas id="monthlyBarChart"></canvas>
-                        </div>
+                        <canvas id="trendMultiLineChart"></canvas>
                     </div>
                 </div>
                 </div>
@@ -237,32 +210,70 @@ const ReportsPage = {
     },
 
     /**
+     * Apply date filter
+     */
+    applyFilter() {
+        const startInput = document.getElementById('report-start-date');
+        const endInput = document.getElementById('report-end-date');
+        
+        if (!startInput.value || !endInput.value) {
+            Toast.show('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด', 'error');
+            return;
+        }
+
+        if (new Date(startInput.value) > new Date(endInput.value)) {
+            Toast.show('วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด', 'error');
+            return;
+        }
+
+        this.dateRange.start = startInput.value;
+        this.dateRange.end = endInput.value;
+        
+        this.loadData();
+    },
+
+    /**
+     * Reset filter to current month
+     */
+    resetFilter() {
+        this.setupDateDefaults();
+        const startInput = document.getElementById('report-start-date');
+        const endInput = document.getElementById('report-end-date');
+        if (startInput) startInput.value = this.dateRange.start;
+        if (endInput) endInput.value = this.dateRange.end;
+        
+        this.loadData();
+    },
+
+    /**
      * Update top trend count slider
      */
-    updateTopExpenseTrendCount(val) {
-        this.topExpenseTrendCount = parseInt(val);
-        document.getElementById('top-expense-trend-val').textContent = val;
-        if (this.currentData.transactions) {
-            this.createExpenseMultiLineChart();
+    updateTopTrendCount(val) {
+        this.topTrendCount = parseInt(val);
+        document.getElementById('top-trend-val').textContent = val;
+        if (this.currentData.trendData) {
+            this.createMultiLineChart();
         }
     },
 
-    setViewMode(mode) {
-        this.viewMode = mode;
-        this._calculateDateRange();
-        this.mount();
-    },
-
-    changePeriod(offset) {
-        const nextDate = new Date(this.selectedDate);
-        if (this.viewMode === 'yearly') {
-            nextDate.setFullYear(nextDate.getFullYear() + offset);
-        } else { // 'monthly'
-            nextDate.setMonth(nextDate.getMonth() + offset);
-        }
-        this.selectedDate = nextDate;
-        this._calculateDateRange();
-        this.mount();
+    /**
+     * Set date range by months
+     */
+    setRangeMonths(months) {
+        const end = new Date();
+        const start = new Date();
+        start.setMonth(end.getMonth() - (months - 1));
+        start.setDate(1); // วันที่ 1
+        
+        const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0);
+        
+        this.dateRange.start = start.toISOString().split('T')[0];
+        this.dateRange.end = lastDay.toISOString().split('T')[0];
+        
+        document.getElementById('report-start-date').value = this.dateRange.start;
+        document.getElementById('report-end-date').value = this.dateRange.end;
+        
+        this.applyFilter();
     },
 
     /**
@@ -289,7 +300,7 @@ const ReportsPage = {
     /**
      * Load all necessary data from Supabase
      */
-    async loadData(onProgress) {
+    async loadData() {
         try {
             const user = await Auth.getCurrentUser();
             if (!user) {
@@ -297,45 +308,39 @@ const ReportsPage = {
                 return;
             }
 
-            onProgress?.(5, 'กำลังดึงข้อมูล...');
+            // Fetch transactions in date range
+            const { data: transactions, error: txError } = await DB.getTransactions(user.id, {
+                dateFrom: this.dateRange.start,
+                dateTo: this.dateRange.end,
+                limit: 50000,
+                ascending: true
+            });
 
-            // รัน 4 queries พร้อมกัน: transactions, accounts, categories, net flows (RPC)
-            const [txResult, accountsResult, categories, netFlowsResult] = await Promise.all([
-                DB.getTransactions(user.id, {
-                    dateFrom: this.dateRange.start,
-                    dateTo: this.dateRange.end,
-                    sortBy: 'date',
-                    limit: 50000,
-                    ascending: true,
-                    onProgress: (loaded, total) => {
-                        const percent = total > 0 ? 5 + Math.round((loaded / total) * 55) : 5;
-                        onProgress?.(percent, `กำลังโหลดธุรกรรม... ${loaded.toLocaleString()}/${total.toLocaleString()}`);
-                    }
-                }),
-                supabaseClient
-                    .from('accounts')
-                    .select('*, investments (*)')
-                    .eq('user_id', user.id)
-                    .eq('is_active', true),
-                DB.getCategories(user.id),
-                // RPC: รับแค่ 3 แถว (asset/investment/liability) แทนการโหลด 50,000 rows
-                supabaseClient.rpc('get_net_flows_by_group', {
-                    p_user_id: user.id,
-                    p_date_from: this.dateRange.start
-                })
-            ]);
-
-            const { data: transactions, error: txError } = txResult;
             if (txError) throw txError;
 
-            const { data: accounts, error: accError } = accountsResult;
+            // Fetch last 6 months data for trend charts (อิงจากวันที่เลือกเป็นหลัก)
+            const sixMonthsAgo = new Date(this.dateRange.start);
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            
+            const { data: trendData, error: trendError } = await DB.getTransactions(user.id, {
+                dateFrom: sixMonthsAgo.toISOString().split('T')[0],
+                dateTo: this.dateRange.end,
+                limit: 50000,
+                ascending: true
+            });
+
+            if (trendError) throw trendError;
+
+            // Fetch accounts and investment details
+            const { data: accounts, error: accError } = await supabaseClient
+                .from('accounts')
+                .select('*, investments (*)')
+                .eq('user_id', user.id)
+                .eq('is_active', true);
+
             if (accError) throw accError;
 
-            const { data: netFlowsData, error: flowError } = netFlowsResult;
-            if (flowError) throw flowError;
-
-            onProgress?.(70, 'กำลังคำนวณยอดคงเหลือ...');
-
+            // Helper: จัดกลุ่มประเภทบัญชี
             const getAccGroup = (type) => {
                 const t = (type || '').toLowerCase();
                 if (['savings', 'cash', 'digital_wallet', 'current', 'other_asset'].includes(t)) return 'asset';
@@ -344,32 +349,46 @@ const ReportsPage = {
                 return 'asset';
             };
 
-            // ยอดปัจจุบันจาก accounts
+            // --- คำนวณยอดเงินยกมาแยกประเภท (Opening Balance by Group) ---
             const currentBalances = { asset: 0, investment: 0, liability: 0 };
             (accounts || []).forEach(a => {
-                currentBalances[getAccGroup(a.type)] += parseFloat(a.balance || 0);
+                const group = getAccGroup(a.type);
+                currentBalances[group] += parseFloat(a.balance || 0);
             });
 
-            // net flow จาก RPC (income - expense ตั้งแต่ dateRange.start จนถึงปัจจุบัน)
+            const { data: allRecentTx, error: flowError } = await DB.getTransactions(user.id, {
+                dateFrom: this.dateRange.start,
+                limit: 50000,
+                ascending: true
+            });
+
+            if (flowError) throw flowError;
+
             const netFlows = { asset: 0, investment: 0, liability: 0 };
-            (netFlowsData || []).forEach(row => {
-                netFlows[row.account_group] = parseFloat(row.net_flow || 0);
+            (allRecentTx || []).forEach(t => {
+                const group = getAccGroup(t.accounts?.type);
+                const amt = parseFloat(t.amount || 0);
+                const type = (t.type || '').toLowerCase();
+                if (type === 'income') netFlows[group] += amt;
+                else if (type === 'expense') netFlows[group] -= amt;
             });
 
-            // ยอดยกมา ณ จุดเริ่มต้นของช่วงที่เลือก = ยอดปัจจุบัน - net flow ในช่วงนั้น
+            this.openingBalance = currentBalances.asset + currentBalances.investment + currentBalances.liability - (netFlows.asset + netFlows.investment + netFlows.liability);
             this.groupOpeningBalances = {
                 asset: currentBalances.asset - netFlows.asset,
                 investment: currentBalances.investment - netFlows.investment,
                 liability: currentBalances.liability - netFlows.liability
             };
+            // -----------------------------------------------------
 
-            onProgress?.(85, 'กำลังประมวลผลข้อมูล...');
-
-            const txWithAccType = (transactions || []).map(t => ({
+            const txWithAccType = transactions.map(t => ({
                 ...t,
                 account_group: getAccGroup(t.accounts?.type)
             }));
 
+            // แยกข้อมูลเป็น 2 ชุด: 
+            // 1. ชุดเต็ม (รวมรายการโอน) สำหรับใช้คำนวณยอดคงเหลือสะสมในกราฟเส้น
+            // 2. ชุดที่กรองรายการโอนออก สำหรับใช้ในกราฟรายรับ-รายจ่าย (Pie/Bar)
             const transferNames = ['transfer between accounts', 'โอนเงินระหว่างบัญชี', 'transfer+', 'transfer-', 'โอน+', 'โอน-'];
             const filterTransfers = (list) => (list || []).filter(t => {
                 const catName = (t.categories?.name || '').toLowerCase();
@@ -377,27 +396,20 @@ const ReportsPage = {
             });
 
             this.currentData = {
-                transactions: txWithAccType,
-                filteredTransactions: filterTransfers(txWithAccType),
+                transactions: txWithAccType, // ชุดเต็มรวมโอน
+                filteredTransactions: filterTransfers(txWithAccType), // ชุดกรองโอนออก
                 accounts: accounts || [],
-                categories: categories || []
+                trendData: trendData || []
             };
 
-            onProgress?.(95, 'กำลังสร้างหน้าจอ...');
-
-            const container = document.getElementById('page-content');
-            if (container) {
-                container.innerHTML = this.render();
-                if (window.lucide) lucide.createIcons();
-                this.bindEvents();
-                this.updateSummaryCards();
-                this.createCharts();
-            }
-
+            const chartsContainer = document.getElementById('reports-charts-wrap');
+            if (chartsContainer) chartsContainer.classList.remove('opacity-40', 'pointer-events-none');
+            this.updateSummaryCards();
+            this.createCharts();
+            
         } catch (error) {
             console.error('Error loading report data:', error);
             Toast.show('ไม่สามารถโหลดข้อมูลรายงานได้', 'error');
-            if (onProgress) throw error;
         }
     },
 
@@ -510,13 +522,11 @@ const ReportsPage = {
      * Create all charts
      */
     createCharts() {
-        this.createNetWorthMixedChart();
         this.createPieChart();
         this.createBarChart();
         this.createAccountsLineChart();
         this.createInvestmentsLineChart();
-        this.createExpenseMultiLineChart();
-        this.createIncomeTrendChart();
+        this.createMultiLineChart();
     },
 
     /**
@@ -728,158 +738,6 @@ const ReportsPage = {
     },
 
     /**
-     * Create Mixed Chart - Net Worth (Bar + Lines)
-     */
-    createNetWorthMixedChart() {
-        const ctx = document.getElementById('netWorthMixedChart');
-        if (!ctx) return;
-        if (this.charts.netWorth) this.charts.netWorth.destroy();
-
-        // Data for Net Worth (Accounts + Investments)
-        const datesSet = new Set();
-        this.currentData.transactions.forEach(t => datesSet.add(t.date));
-        const sortedDates = Array.from(datesSet).sort();
-
-        let runAcc = (this.groupOpeningBalances?.asset || 0) + (this.groupOpeningBalances?.liability || 0);
-        let runInv = this.groupOpeningBalances?.investment || 0;
-
-        const labels = [];
-        const accData = [];
-        const invData = [];
-        const totalData = [];
-
-        const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-        if (this.viewMode === 'monthly') {
-            // Daily aggregation
-            // Initial state at start of period
-            labels.push(new Date(this.dateRange.start).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + ' (เริ่ม)');
-            accData.push(runAcc);
-            invData.push(runInv);
-            totalData.push(runAcc + runInv);
-
-            sortedDates.forEach(date => {
-                const txs = this.currentData.transactions.filter(t => t.date === date);
-                txs.forEach(t => {
-                    const amt = parseFloat(t.amount || 0);
-                    const isInc = (t.type || '').toLowerCase() === 'income';
-                    if (t.account_group === 'asset' || t.account_group === 'liability') {
-                        runAcc += isInc ? amt : -amt;
-                    } else if (t.account_group === 'investment') {
-                        runInv += isInc ? amt : -amt;
-                    }
-                });
-                labels.push(new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }));
-                accData.push(runAcc);
-                invData.push(runInv);
-                totalData.push(runAcc + runInv);
-            });
-        } else { // Yearly viewMode - Monthly aggregation
-            // Aggregate transactions by month
-            const monthlyChanges = {}; // Stores net change for each month and group
-            for (let m = 0; m < 12; m++) {
-                const monthKey = `${this.selectedDate.getFullYear()}-${String(m + 1).padStart(2, '0')}`;
-                monthlyChanges[monthKey] = { asset: 0, investment: 0, liability: 0 };
-            }
-
-            this.currentData.transactions.forEach(tx => {
-                const date = new Date(tx.date);
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                if (monthlyChanges.hasOwnProperty(monthKey)) {
-                    const amt = parseFloat(tx.amount || 0);
-                    const isInc = (tx.type || '').toLowerCase() === 'income';
-                    const change = isInc ? amt : -amt;
-                    if (tx.account_group === 'asset' || tx.account_group === 'liability') monthlyChanges[monthKey].asset += change;
-                    else if (tx.account_group === 'investment') monthlyChanges[monthKey].investment += change;
-                }
-            });
-
-            labels.push(...TH_MONTHS);
-            for (let m = 0; m < 12; m++) {
-                const monthKey = `${this.selectedDate.getFullYear()}-${String(m + 1).padStart(2, '0')}`;
-                runAcc += monthlyChanges[monthKey].asset + monthlyChanges[monthKey].liability;
-                runInv += monthlyChanges[monthKey].investment;
-                accData.push(runAcc);
-                invData.push(runInv);
-                totalData.push(runAcc + runInv);
-            }
-        }
-
-        this.charts.netWorth = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        type: 'line',
-                        label: 'ยอดเงินคงเหลือ (Accounts)',
-                        data: accData,
-                        borderColor: '#10b981', // Green
-                        backgroundColor: '#10b981',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 2,
-                        order: 1
-                    },
-                    {
-                        type: 'line',
-                        label: 'ยอดเงินลงทุน (Investments)',
-                        data: invData,
-                        borderColor: '#a855f7', // Purple
-                        backgroundColor: '#a855f7',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 2,
-                        order: 2
-                    },
-                    {
-                        type: 'bar',
-                        label: 'มูลค่าทรัพย์สินรวม (Net Worth)',
-                        data: totalData,
-                        backgroundColor: 'rgba(59, 130, 246, 0.15)', // Light blue
-                        borderColor: 'rgba(59, 130, 246, 0.5)',
-                        borderWidth: 1,
-                        borderRadius: 4,
-                        order: 3
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { usePointStyle: true, padding: 15 }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                return ` ${context.dataset.label}: ${Format.currency(context.raw)}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: (value) => Format.compactNumber(value)
-                        }
-                    },
-                    x: {
-                        grid: { display: false }
-                    }
-                }
-            }
-        });
-    },
-
-    /**
      * Create Line Chart - Accounts (Assets) Trend
      */
     createAccountsLineChart() {
@@ -887,15 +745,10 @@ const ReportsPage = {
         if (!ctx) return;
         if (this.charts.accountsLine) this.charts.accountsLine.destroy();
 
-        const { labels, data } = this._getRunningBalanceChartData(
-            this.currentData.transactions,
-            (this.groupOpeningBalances?.asset || 0) + (this.groupOpeningBalances?.liability || 0),
-            ['asset', 'liability']
-        );
-
-        /*
-        const dailyBalance = {}; // Net change per day for asset/liability group
-        this.currentData.transactions.filter(t => t.account_group === 'asset' || t.account_group === 'liability').forEach(t => {
+        const dailyBalance = {};
+        this.currentData.transactions
+            .filter(t => t.account_group === 'asset' || t.account_group === 'liability')
+            .forEach(t => {
                 const date = t.date;
                 if (!dailyBalance[date]) dailyBalance[date] = 0;
                 const amt = parseFloat(t.amount || 0);
@@ -919,15 +772,14 @@ const ReportsPage = {
                 balance: running
             });
         });
-        */
 
         this.charts.accountsLine = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
-                datasets: [{ // data is already the running balance
+                labels: data.map(d => d.date),
+                datasets: [{
                     label: 'ยอดเงินคงเหลือสะสม (Accounts)',
-                    data: data,
+                    data: data.map(d => d.balance),
                     borderColor: '#10b981',
                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     fill: true, tension: 0.4, pointRadius: 2
@@ -945,14 +797,10 @@ const ReportsPage = {
         if (!ctx) return;
         if (this.charts.investmentsLine) this.charts.investmentsLine.destroy();
 
-        const { labels, data } = this._getRunningBalanceChartData(
-            this.currentData.transactions,
-            this.groupOpeningBalances?.investment || 0,
-            'investment'
-        );
-        /*
-        const dailyBalance = {}; // Net change per day for investment group
-        this.currentData.transactions.filter(t => t.account_group === 'investment').forEach(t => {
+        const dailyBalance = {};
+        this.currentData.transactions
+            .filter(t => t.account_group === 'investment')
+            .forEach(t => {
                 const date = t.date;
                 if (!dailyBalance[date]) dailyBalance[date] = 0;
                 const amt = parseFloat(t.amount || 0);
@@ -975,15 +823,14 @@ const ReportsPage = {
                 balance: running
             });
         });
-        */
 
         this.charts.investmentsLine = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
-                datasets: [{ // data is already the running balance
+                labels: data.map(d => d.date),
+                datasets: [{
                     label: 'ยอดเงินคงเหลือสะสม (Investments)',
-                    data: data,
+                    data: data.map(d => d.balance),
                     borderColor: '#3b82f6',
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     fill: true, tension: 0.4, pointRadius: 2
@@ -994,14 +841,14 @@ const ReportsPage = {
     },
 
     /**
-     * Create Multi-line Chart - Top Expense Categories Trend
+     * Create Multi-line Chart - Top 3 Categories Trend
      */
-    createExpenseMultiLineChart() {
-        const ctx = document.getElementById('expenseTrendMultiLineChart');
+    createMultiLineChart() {
+        const ctx = document.getElementById('trendMultiLineChart');
         if (!ctx) return;
 
-        if (this.charts.expenseMultiLine) {
-            this.charts.expenseMultiLine.destroy();
+        if (this.charts.multiLine) {
+            this.charts.multiLine.destroy();
         }
 
         // Find top trend categories from selected range transactions
@@ -1010,72 +857,50 @@ const ReportsPage = {
             .filter(t => (t.type || '').toLowerCase() === 'expense')
             .forEach(t => {
                 const catName = t.categories?.name || 'ไม่ระบุ';
-                categoryTotals[catName] = (categoryTotals[catName] || 0) + parseFloat(t.amount || 0);
+                categoryTotals[catName] = (categoryTotals[catName] || 0) + parseFloat(t.amount);
             });
 
         const topCategoriesCount = Object.entries(categoryTotals)
             .sort((a, b) => b[1] - a[1])
-            .slice(0, this.topExpenseTrendCount)
+            .slice(0, this.topTrendCount)
             .map(([name]) => name);
 
-        // Group by period (daily or monthly)
-        const aggregatedData = {}; // Stores daily/monthly spending per category
-        const periods = new Set(); // Stores dates or month keys
-
-        const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+        // Group by month (or day if range is small)
+        const dailyData = {};
+        const dates = new Set();
         
         this.currentData.filteredTransactions
-            .filter(t => (t.type || '').toLowerCase() === 'expense' && t.categories?.name && topCategoriesCount.includes(t.categories.name))
+            .filter(t => (t.type || '').toLowerCase() === 'expense' && topCategoriesCount.includes(t.categories?.name))
             .forEach(t => {
                 const date = t.date;
                 const catName = t.categories.name;
-                let periodKey;
-                let periodLabel;
-
-                if (this.viewMode === 'monthly') {
-                    periodKey = t.date; // Daily key
-                    periodLabel = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                } else { // Yearly viewMode
-                    periodKey = `${new Date(date).getFullYear()}-${String(new Date(date).getMonth() + 1).padStart(2, '0')}`; // Monthly key
-                    periodLabel = TH_MONTHS[new Date(date).getMonth()];
-                }
-                periods.add(periodKey);
-
-                if (!aggregatedData[periodKey]) aggregatedData[periodKey] = { label: periodLabel };
-                if (!aggregatedData[periodKey][catName]) aggregatedData[periodKey][catName] = 0;
                 
-                aggregatedData[periodKey][catName] += parseFloat(t.amount || 0);
+                dates.add(date);
+                if (!dailyData[date]) dailyData[date] = { date: new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) };
+                if (!dailyData[date][catName]) dailyData[date][catName] = 0;
+                
+                dailyData[date][catName] += parseFloat(t.amount);
             });
 
-        const sortedPeriods = Array.from(periods).sort();
-        let labels = sortedPeriods.map(p => aggregatedData[p].label);
+        const sortedDates = Array.from(dates).sort();
+        const labels = sortedDates.map(d => dailyData[d].date);
 
         const colors = [
             '#F43F5E', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', 
             '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#A855F7', '#FBBF24'
         ];
 
-        const datasets = topCategoriesCount.map((cat, index) => {
-            let dataPoints;
-            if (this.viewMode === 'yearly') {
-                labels = TH_MONTHS;
-                dataPoints = Array(12).fill(0);
-                sortedPeriods.forEach(p => {
-                    const monthIndex = parseInt(p.split('-')[1]) - 1;
-                    if (monthIndex >= 0 && monthIndex < 12) {
-                        dataPoints[monthIndex] = aggregatedData[p]?.[cat] || 0;
-                    }
-                });
-            } else {
-                dataPoints = sortedPeriods.map(p => aggregatedData[p]?.[cat] || 0);
-            }
-            return {
-                label: cat, data: dataPoints, borderColor: colors[index % colors.length],
-                backgroundColor: colors[index % colors.length] + '20', tension: 0.4, pointRadius: 3, fill: false
-            };
-        });
+        const datasets = topCategoriesCount.map((cat, index) => ({
+            label: cat,
+            data: sortedDates.map(d => dailyData[d][cat] || 0),
+            borderColor: colors[index % colors.length],
+            backgroundColor: colors[index % colors.length] + '20',
+            tension: 0.4,
+            pointRadius: 3,
+            fill: false
+        }));
 
-        this.charts.expenseMultiLine = new Chart(ctx, {
+        this.charts.multiLine = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
@@ -1095,12 +920,7 @@ const ReportsPage = {
                             usePointStyle: true,
                             padding: 10,
                             boxWidth: 8,
-                            font: { size: 10 },
-                            // ป้องกันการแสดง legend ของ dataset ที่ไม่มีข้อมูล (ยอดเป็น 0 ตลอดช่วง)
-                            filter: function(legendItem, chartData) {
-                                const dataset = chartData.datasets[legendItem.datasetIndex];
-                                return dataset.data && dataset.data.length > 0 && dataset.data.some(point => point > 0);
-                            }
+                            font: { size: 10 }
                         }
                     },
                     tooltip: {
@@ -1119,253 +939,17 @@ const ReportsPage = {
                         const datasetIndex = activeElements[0].datasetIndex;
                         const dateLabel = chart.data.labels[index]; 
                         const catName = chart.data.datasets[datasetIndex].label;
-
-                        // Adjust dateLabel for yearly view to match full month name
-                        let displayDateLabel = dateLabel;
-                        if (this.viewMode === 'yearly') {
-                            const monthIndex = TH_MONTHS.indexOf(dateLabel);
-                            displayDateLabel = new Date(this.selectedDate.getFullYear(), monthIndex, 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
-                        }
-
+                        
                         const filtered = this.currentData.transactions.filter(t => {
                             const date = new Date(t.date);
-                            if (this.viewMode === 'yearly') {
-                                const monthIndex = TH_MONTHS.indexOf(dateLabel);
-                                return date.getMonth() === monthIndex && (t.categories?.name || 'ไม่ระบุ') === catName && (t.type || '').toLowerCase() === 'expense';
-                            }
-                            // monthly view
                             const dLabel = date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
                             return dLabel === dateLabel && (t.categories?.name || 'ไม่ระบุ') === catName && (t.type || '').toLowerCase() === 'expense';
                         });
-                        this.openDrillDownModal(filtered, `หมวดหมู่ ${catName}: ${displayDateLabel}`);
+                        this.openDrillDownModal(filtered, `หมวดหมู่ ${catName}: วันที่ ${dateLabel}`);
                     }
                 }
             }
         });
-    },
-
-    /**
-     * Create Mixed Chart - Income Trend by Selected Categories
-     */
-    createIncomeTrendChart() {
-        const ctx = document.getElementById('incomeTrendMultiLineChart');
-        if (!ctx) return;
-
-        if (this.charts.incomeMultiLine) {
-            this.charts.incomeMultiLine.destroy();
-        }
-        
-        const selectedCatIds = JSON.parse(localStorage.getItem('REPORT_INCOME_TREND_CATS') || '[]');
-
-        if (selectedCatIds.length === 0) {
-            const context = ctx.getContext('2d');
-            context.clearRect(0, 0, ctx.width, ctx.height);
-            context.font = "14px 'Kanit', sans-serif";
-            context.fillStyle = '#94a3b8';
-            context.textAlign = 'center';
-            context.fillText('กรุณาเลือกหมวดหมู่ในหน้า Settings > Profile เพื่อแสดงกราฟ', ctx.width / 2, ctx.height / 2);
-            return;
-        }
-
-        const selectedCategories = [];
-        if (this.currentData.categories) {
-            selectedCatIds.forEach(id => {
-                const cat = this.currentData.categories.find(c => c.id === id);
-                if (cat) selectedCategories.push(cat);
-            });
-        }
-
-        // Group by period
-        const aggregatedData = {};
-        const periods = new Set();
-        const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-        
-        this.currentData.filteredTransactions
-            .filter(t => (t.type || '').toLowerCase() === 'income' && t.categories?.id && selectedCatIds.includes(t.categories.id))
-            .forEach(t => {
-                const date = new Date(t.date);
-                const catId = t.categories.id;
-                let periodKey, periodLabel;
-
-                if (this.viewMode === 'monthly') {
-                    periodKey = t.date;
-                    periodLabel = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                } else { // Yearly
-                    periodKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                    periodLabel = TH_MONTHS[date.getMonth()];
-                }
-                periods.add(periodKey);
-
-                if (!aggregatedData[periodKey]) aggregatedData[periodKey] = { label: periodLabel };
-                if (!aggregatedData[periodKey][catId]) aggregatedData[periodKey][catId] = 0;
-                
-                aggregatedData[periodKey][catId] += parseFloat(t.amount || 0);
-            });
-
-        const sortedPeriods = Array.from(periods).sort();
-        let labels = sortedPeriods.map(p => aggregatedData[p].label);
-
-        const colors = [
-            '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#06B6D4', 
-            '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#A855F7', '#FBBF24', '#F43F5E'
-        ];
-
-        const datasets = [];
-        selectedCategories.forEach((cat, index) => {
-            const color = colors[index % colors.length];
-            const periodicData = [];
-            const cumulativeData = [];
-            let cumulativeTotal = 0;
-            let periodKeys;
-
-            if (this.viewMode === 'yearly') {
-                labels = TH_MONTHS;
-                periodKeys = Array.from({length: 12}, (_, i) => `${this.selectedDate.getFullYear()}-${String(i + 1).padStart(2, '0')}`);
-            } else {
-                periodKeys = sortedPeriods;
-            }
-
-            periodKeys.forEach(p => {
-                const periodAmount = aggregatedData[p]?.[cat.id] || 0;
-                periodicData.push(periodAmount);
-                cumulativeTotal += periodAmount;
-                cumulativeData.push(cumulativeTotal);
-            });
-
-            // Bar for periodic amount
-            datasets.push({
-                type: 'bar',
-                label: cat.name,
-                data: periodicData,
-                backgroundColor: color + 'B3', // with opacity
-                borderColor: color,
-                borderWidth: 1,
-                order: index + selectedCategories.length // Bars behind lines
-            });
-
-            // Line for cumulative amount
-            datasets.push({
-                type: 'line',
-                label: cat.name, // ใช้ชื่อหมวดหมู่สั้นๆ สำหรับ Legend
-                data: cumulativeData,
-                borderColor: color,
-                backgroundColor: color + '20',
-                tension: 0.1,
-                pointRadius: 2,
-                fill: false,
-                order: index // Lines in front of bars
-            });
-        });
-
-        this.charts.incomeMultiLine = new Chart(ctx, {
-            type: 'bar',
-            data: { labels: labels, datasets: datasets },
-            options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },
-                plugins: { 
-                    legend: { 
-                        position: 'top', 
-                        labels: { 
-                            usePointStyle: true, padding: 10, boxWidth: 8, font: { size: 10 },
-                            // กรองให้แสดงเฉพาะ Legend ของกราฟเส้น (สะสม)
-                            filter: (legendItem, chartData) => {
-                                const dataset = chartData.datasets[legendItem.datasetIndex];
-                                return dataset.type === 'line';
-                            }
-                        },
-                        // เมื่อคลิก Legend ให้ซ่อน/แสดง ทั้งกราฟแท่งและกราฟเส้นที่คู่กัน
-                        onClick: (e, legendItem, legend) => {
-                            const ci = legend.chart;
-                            const index = legendItem.datasetIndex; // index ของกราฟเส้น
-                            const barIndex = index - 1; // index ของกราฟแท่งที่คู่กัน
-
-                            const isHidden = !ci.isDatasetVisible(index);
-                            ci.setDatasetVisibility(index, isHidden);
-                            if (barIndex >= 0) {
-                                ci.setDatasetVisibility(barIndex, isHidden);
-                            }
-                            ci.update();
-                        }
-                    },
-                    tooltip: { callbacks: { label: (context) => {
-                        const dataset = context.dataset;
-                        let label = dataset.label || '';
-                        if (dataset.type === 'line') label += ' (สะสม)';
-                        return `${label}: ${Format.currency(context.raw)}`;
-                    } } }
-                },
-                scales: { y: { beginAtZero: true, ticks: { callback: v => Format.compactNumber(v) } } }
-            }
-        });
-    },
-
-    // Helper function to get running balance data for charts
-    _getRunningBalanceChartData(transactions, initialRunningBalance, accountGroupFilters = null) {
-        const labels = [];
-        const data = [];
-        const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-        let currentRunning = initialRunningBalance;
-
-        // Filter transactions by account group(s) if specified
-        let filteredTxs = transactions;
-        if (accountGroupFilters) {
-            const filters = Array.isArray(accountGroupFilters) ? accountGroupFilters : [accountGroupFilters];
-            filteredTxs = transactions.filter(t => filters.includes(t.account_group));
-        }
-
-        if (this.viewMode === 'monthly') {
-            // Daily aggregation
-            const dailyAggregated = {}; // Stores net change for each day
-            filteredTxs.forEach(tx => {
-                const date = tx.date;
-                if (!dailyAggregated[date]) dailyAggregated[date] = 0;
-                const amt = parseFloat(tx.amount || 0);
-                const isInc = (tx.type || '').toLowerCase() === 'income';
-                dailyAggregated[date] += isInc ? amt : -amt;
-            });
-
-            const sortedDates = Object.keys(dailyAggregated).sort();
-
-            // Initial state at start of period
-            labels.push(new Date(this.dateRange.start).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + ' (เริ่ม)');
-            data.push(currentRunning);
-
-            sortedDates.forEach(dateStr => {
-                labels.push(new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }));
-                currentRunning += dailyAggregated[dateStr];
-                data.push(currentRunning);
-            });
-
-        } else { // Yearly viewMode - Monthly aggregation
-            // Aggregate transactions by month
-            const monthlyAggregated = {}; // Stores net change for each month
-            for (let m = 0; m < 12; m++) {
-                const monthKey = `${this.selectedDate.getFullYear()}-${String(m + 1).padStart(2, '0')}`;
-                monthlyAggregated[monthKey] = 0;
-            }
-
-            filteredTxs.forEach(tx => {
-                const date = new Date(tx.date);
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                if (monthlyAggregated.hasOwnProperty(monthKey)) {
-                    const amt = parseFloat(tx.amount || 0);
-                    const isInc = (tx.type || '').toLowerCase() === 'income';
-                    monthlyAggregated[monthKey] += isInc ? amt : -amt;
-                }
-            });
-
-            // Labels are always 12 months for yearly view
-            labels.push(...TH_MONTHS);
-
-            // Calculate running balance for each month
-            for (let m = 0; m < 12; m++) {
-                const monthKey = `${this.selectedDate.getFullYear()}-${String(m + 1).padStart(2, '0')}`;
-                currentRunning += monthlyAggregated[monthKey];
-                data.push(currentRunning);
-            }
-        }
-
-        return { labels, data };
     },
 
     /**
@@ -1551,44 +1135,18 @@ const ReportsPage = {
      * Mount the page
      */
     async mount() {
-        const container = document.getElementById('page-content');
-        if (!container) return;
-
-        if (!this.dateRange.start) {
+        if (!this.dateRange.start || !this.dateRange.end) {
             this.setupDateDefaults();
         }
-
-        // 1. Render loading UI
-        container.innerHTML = `
-            <div id="report-loading" class="flex flex-col items-center justify-center min-h-[60vh] text-slate-500">
-                <div class="relative mb-6">
-                    <div class="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                        <i data-lucide="bar-chart-2" class="w-6 h-6 text-blue-600"></i>
-                    </div>
-                </div>
-                <h3 class="text-lg font-bold text-slate-700 mb-2">กำลังเตรียมรายงาน</h3>
-                <p class="text-sm text-slate-400 mb-4" id="report-progress-text">กำลังเริ่มต้น...</p>
-                <div class="w-64 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div id="report-progress-bar" class="h-full bg-blue-600 transition-all duration-300" style="width: 0%"></div>
-                </div>
-            </div>
-        `;
-        if (window.lucide) lucide.createIcons();
-
-        const progressText = document.getElementById('report-progress-text');
-        const progressBar = document.getElementById('report-progress-bar');
-        const onProgress = (percent, text) => {
-            if (progressText) progressText.textContent = text;
-            if (progressBar) progressBar.style.width = `${percent}%`;
-        };
-
-        // 2. Load data, which will then render the full page
-        try {
-            await this.loadData(onProgress);
-        } catch (e) {
-            console.error("Error mounting Reports page:", e);
-            container.innerHTML = `<div class="p-8 text-center text-red-500">Error loading reports: ${e.message}</div>`;
+        const container = document.getElementById('page-content');
+        if (container) {
+            // เรนเดอร์โครงหน้าทันทีเพื่อให้ User เห็น UI ทันทีไม่ต้องรอโหลดข้อมูล
+            container.innerHTML = this.render();
+            if (window.lucide) lucide.createIcons();
+            this.bindEvents();
+            
+            // ค่อยๆ โหลดข้อมูลมาเติมในช่องว่าง
+            await this.loadData();
         }
     }
 };

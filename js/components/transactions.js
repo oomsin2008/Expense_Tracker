@@ -27,12 +27,8 @@ window.TransactionsPage = {
         page: 1,
         perPage: 50,
         selectedYear: new Date().getFullYear(),
-        showSearch: false,
-        sortBy: 'date',
-        ascending: false
+        showSearch: false
     },
-
-    pendingCheckedStates: {}, // txId -> boolean
 
     _isFabOpen: false,
 
@@ -97,9 +93,7 @@ window.TransactionsPage = {
         DB.getAccounts(userId),
         DB.getCategories(userId)
       ]);
-      this.accounts = (accounts || []).sort((a, b) => 
-        a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' })
-      );
+      this.accounts = accounts;
       this.categories = categories;
   
       await this._loadTransactions();
@@ -148,8 +142,15 @@ window.TransactionsPage = {
               ` : ''}
               <h1 class="text-white font-bold text-lg">Transactions</h1>
             </div>
-            <div id="tx-header-actions" class="flex items-center gap-2">
-              ${this._renderHeaderActions()}
+            <div class="flex items-center gap-2">
+              <button onclick="TransactionsPage.toggleSearch()" 
+                class="p-2 text-white hover:bg-white/10 rounded-full transition-colors">
+                <i data-lucide="search" class="w-5 h-5"></i>
+              </button>
+              <button onclick="TransactionsPage.openModal()"
+                class="bg-white/20 hover:bg-white/30 text-white w-9 h-9 rounded-full flex items-center justify-center transition-colors">
+                <i data-lucide="plus" class="w-5 h-5"></i>
+              </button>
             </div>
           </div>
 
@@ -244,120 +245,56 @@ window.TransactionsPage = {
   
     _renderFilters() {
       return `
-        <div class="bg-white border-b border-slate-200 p-3 shadow-sm flex flex-col gap-3">
-          <!-- Search & Clear Row -->
-          <div class="flex items-center gap-3">
-              <div class="relative flex-1">
-                  <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-                  <input type="text" id="tx-search" placeholder="ค้นหาบันทึก..."
-                      value="${this.filters.search || ''}"
-                      oninput="TransactionsPage.debounceSearch(this.value)"
-                      class="w-full pl-9 pr-3 py-2 border border-slate-100 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/10 transition-all">
-              </div>
-              <button onclick="TransactionsPage.clearFilters()" class="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="Reset Filters">
-                  <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
-              </button>
+        <div class="bg-white border-b border-slate-200 p-4 shadow-sm flex flex-col gap-4">
+          <div class="relative">
+             <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+             <input type="text" id="tx-search" placeholder="ค้นหาบันทึก..."
+                value="${this.filters.search || ''}"
+                oninput="TransactionsPage.debounceSearch(this.value)"
+                class="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
           </div>
-
-          <!-- Main Filter Grid -->
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-              <!-- Type Select -->
-              <div class="relative group">
-                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500">
-                      <i data-lucide="filter" class="w-3.5 h-3.5"></i>
-                  </div>
-                  <select id="tx-filter-type" onchange="TransactionsPage.applyFilters()"
-                      class="w-full pl-8 pr-2 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500/20 appearance-none cursor-pointer">
-                      <option value="">ทุกประเภท</option>
-                      <option value="income"  ${this.filters.type === 'income' ? 'selected' : ''}>รายรับ</option>
-                      <option value="expense" ${this.filters.type === 'expense' ? 'selected' : ''}>รายจ่าย</option>
-                      <option value="transfer" ${this.filters.type === 'transfer' ? 'selected' : ''}>โอนเงิน</option>
-                  </select>
-              </div>
-
-              <!-- Account Type -->
-              <div class="relative group">
-                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500">
-                      <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-                  </div>
-                  <select id="tx-filter-account-type" onchange="TransactionsPage.applyFilters()"
-                      class="w-full pl-8 pr-2 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 focus:outline-none appearance-none cursor-pointer">
-                      <option value="">กลุ่มบัญชี</option>
-                      <option value="bank" ${this.filters.accountType === 'bank' ? 'selected' : ''}>เงินสด/ธนาคาร</option>
-                      <option value="investment" ${this.filters.accountType === 'investment' ? 'selected' : ''}>การลงทุน</option>
-                      <option value="credit_card" ${this.filters.accountType === 'credit_card' ? 'selected' : ''}>บัตรเครดิต</option>
-                  </select>
-              </div>
-
-              <!-- Individual Account -->
-              <div class="relative group">
-                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500">
-                      <i data-lucide="landmark" class="w-3.5 h-3.5"></i>
-                  </div>
-                  <select id="tx-filter-account" onchange="TransactionsPage.applyFilters()"
-                      class="w-full pl-8 pr-2 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 focus:outline-none appearance-none cursor-pointer">
-                      <option value="">รายบัญชี</option>
-                      ${this.accounts.map(a => `<option value="${a.id}" ${this.filters.accountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
-                  </select>
-              </div>
-
-              <!-- Sorting -->
-              <div class="relative group">
-                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500">
-                      <i data-lucide="arrow-down-up" class="w-3.5 h-3.5"></i>
-                  </div>
-                  <select id="tx-sort-by" onchange="TransactionsPage.applyFilters()"
-                      class="w-full pl-8 pr-2 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 focus:outline-none appearance-none cursor-pointer">
-                      <option value="date" ${this.filters.sortBy === 'date' ? 'selected' : ''}>เรียง: วันที่</option>
-                      <option value="amount" ${this.filters.sortBy === 'amount' ? 'selected' : ''}>เรียง: จำนวน</option>
-                      <option value="note" ${this.filters.sortBy === 'note' ? 'selected' : ''}>เรียง: บันทึก</option>
-                      <option value="category_name" ${this.filters.sortBy === 'category_name' ? 'selected' : ''}>เรียง: หมวดหมู่</option>
-                      <option value="account_name" ${this.filters.sortBy === 'account_name' ? 'selected' : ''}>เรียง: บัญชี</option>
-                  </select>
-              </div>
-
-              <!-- Date Range -->
-              <div class="col-span-2 flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2 shadow-inner">
-                  <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-                  <input type="date" id="tx-filter-from" value="${this.filters.dateFrom || ''}" onchange="TransactionsPage.applyFilters()"
-                         class="bg-transparent text-[10px] py-2 focus:outline-none w-full font-bold text-slate-600">
-                  <span class="text-slate-300">-</span>
-                  <input type="date" id="tx-filter-to" value="${this.filters.dateTo || ''}" onchange="TransactionsPage.applyFilters()"
-                         class="bg-transparent text-[10px] py-2 focus:outline-none w-full font-bold text-slate-600">
-              </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">ประเภท</label>
+                <select id="tx-filter-type" onchange="TransactionsPage.applyFilters()"
+                  class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                  <option value="">ทั้งหมด</option>
+                  <option value="income"  ${this.filters.type === 'income' ? 'selected' : ''}>รายรับ</option>
+                  <option value="expense" ${this.filters.type === 'expense' ? 'selected' : ''}>รายจ่าย</option>
+                  <option value="transfer" ${this.filters.type === 'transfer' ? 'selected' : ''}>โอนเงิน</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">กลุ่มบัญชี</label>
+                <select id="tx-filter-account-type" onchange="TransactionsPage.applyFilters()"
+                  class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                  <option value="">ทั้งหมด</option>
+                  <option value="bank" ${this.filters.accountType === 'bank' ? 'selected' : ''}>เงินสด/ธนาคาร</option>
+                  <option value="investment" ${this.filters.accountType === 'investment' ? 'selected' : ''}>การลงทุน</option>
+                  <option value="credit_card" ${this.filters.accountType === 'credit_card' ? 'selected' : ''}>บัตรเครดิต</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">รายบัญชี</label>
+                <select id="tx-filter-account" onchange="TransactionsPage.applyFilters()"
+                  class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                  <option value="">เลือกบัญชี</option>
+                  ${this.accounts.map(a => `<option value="${a.id}" ${this.filters.accountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">ช่วงเวลา</label>
+                <div class="flex items-center gap-1">
+                    <input type="date" id="tx-filter-from" value="${this.filters.dateFrom || ''}" onchange="TransactionsPage.applyFilters()"
+                           class="w-full px-1 py-2 border border-slate-200 rounded-lg text-[10px] bg-slate-50">
+                    <input type="date" id="tx-filter-to" value="${this.filters.dateTo || ''}" onchange="TransactionsPage.applyFilters()"
+                           class="w-full px-1 py-2 border border-slate-200 rounded-lg text-[10px] bg-slate-50">
+                </div>
+            </div>
           </div>
-
-          <!-- Bottom Bar: Status & Batch Actions -->
-          <div class="flex items-center justify-between gap-3 pt-1">
-              <div class="flex items-center gap-3">
-                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                      FOUND ${this.totalCount}
-                  </span>
-                  <button onclick="TransactionsPage.exportToCSV()" class="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold border border-emerald-100 hover:bg-emerald-100 transition-all">
-                      <i data-lucide="download" class="w-3.5 h-3.5"></i> EXPORT CSV
-                  </button>
-                  <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-                      <button onclick="TransactionsPage.toggleSortOrder(false)" 
-                              class="p-1.5 rounded-md transition-all ${!this.filters.ascending ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}" title="Descending">
-                          <i data-lucide="sort-desc" class="w-3.5 h-3.5"></i>
-                      </button>
-                      <button onclick="TransactionsPage.toggleSortOrder(true)" 
-                              class="p-1.5 rounded-md transition-all ${this.filters.ascending ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}" title="Ascending">
-                          <i data-lucide="sort-asc" class="w-3.5 h-3.5"></i>
-                      </button>
-                  </div>
-              </div>
-
-              <div class="flex items-center gap-2">
-                  <div class="flex items-center gap-1">
-                      <button onclick="TransactionsPage.batchCheck(true)" class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Check All Items">
-                          <i data-lucide="check-square" class="w-4 h-4"></i>
-                      </button>
-                      <button onclick="TransactionsPage.batchCheck(false)" class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Uncheck All Items">
-                          <i data-lucide="square" class="w-4 h-4"></i>
-                      </button>
-                  </div>
-              </div>
+          <div class="flex justify-between items-center pt-2 border-t border-slate-50">
+             <span class="text-[10px] text-slate-400 font-bold">FOUND ${this.totalCount} ITEMS</span>
+             <button onclick="TransactionsPage.clearFilters()" class="text-xs text-blue-500 font-bold">RESET FILTERS</button>
           </div>
         </div>
       `;
@@ -375,11 +312,6 @@ window.TransactionsPage = {
         this.refresh();
     },
 
-    toggleSortOrder(asc) {
-        this.filters.ascending = asc;
-        this.refresh();
-    },
-
     clearFilters() {
         this.filters.type = null;
         this.filters.accountId = null;
@@ -389,20 +321,15 @@ window.TransactionsPage = {
         this.filters.dateTo = null;
         this.filters.search = null;
         this.filters.page = 1;
-        this.filters.sortBy = 'date';
-        this.filters.ascending = false;
-        this.pendingCheckedStates = {};
         this.refresh();
     },
 
     applyFilters() {
-        this.filters.type = document.getElementById('tx-filter-type')?.value || null;
-        this.filters.accountId = document.getElementById('tx-filter-account')?.value || null;
-        this.filters.accountType = document.getElementById('tx-filter-account-type')?.value || null;
-        this.filters.dateFrom = document.getElementById('tx-filter-from')?.value || null;
-        this.filters.dateTo = document.getElementById('tx-filter-to')?.value || null;
-        this.filters.sortBy = document.getElementById('tx-sort-by')?.value || 'date';
-        // Note: ascending is now handled via toggleSortOrder buttons
+        this.filters.type = document.getElementById('tx-filter-type').value || null;
+        this.filters.accountId = document.getElementById('tx-filter-account').value || null;
+        this.filters.accountType = document.getElementById('tx-filter-account-type').value || null;
+        this.filters.dateFrom = document.getElementById('tx-filter-from').value || null;
+        this.filters.dateTo = document.getElementById('tx-filter-to').value || null;
         this.filters.page = 1;
         this.refresh();
     },
@@ -464,9 +391,7 @@ window.TransactionsPage = {
             categoryId: this.filters.categoryId,
             dateFrom: queryDateFrom,
             dateTo: queryDateTo,
-            search: this.filters.search,
-            sortBy: this.filters.sortBy,
-            ascending: this.filters.ascending
+            search: this.filters.search
         });
 
         let futureTxsData = [];
@@ -481,20 +406,9 @@ window.TransactionsPage = {
         }, 0);
 
         this.transactions = (data || []).map(tx => {
-            tx.original_is_checked = tx.is_checked; // เก็บสถานะจริงจาก DB
-            if (this.pendingCheckedStates[tx.id] !== undefined) {
-                tx.is_checked = this.pendingCheckedStates[tx.id];
-            }
-            tx.is_pending = this.pendingCheckedStates[tx.id] !== undefined; // บอกว่ามีการแก้ไขแต่ยังไม่เซฟหรือไม่
-
-            const isSortedByDefault = this.filters.sortBy === 'date' && !this.filters.ascending;
-            if (isSortedByDefault) {
-                tx.running_balance = currentRunBalance;
-                const amt = parseFloat(tx.amount || 0);
-                currentRunBalance -= (tx.type === 'income' ? amt : -amt);
-            } else {
-                tx.running_balance = null;
-            }
+            tx.running_balance = currentRunBalance;
+            const amt = parseFloat(tx.amount || 0);
+            currentRunBalance -= (tx.type === 'income' ? amt : -amt);
             return tx;
         });
         this.totalCount = count || 0;
@@ -516,35 +430,13 @@ window.TransactionsPage = {
         if (this.transactions.length === 0) {
             return `<div class="p-12 text-center text-slate-400 text-sm">ไม่พบรายการที่ตรงตามเงื่อนไข</div>`;
         }
-
-        const isSortedByDate = this.filters.sortBy === 'date';
-
-        if (!isSortedByDate) {
-            // Flat list for non-date sorting
-            return `
-                <div class="mb-4">
-                    <div class="px-5 py-2 bg-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest flex justify-between">
-                       <span>SORTED BY ${this.filters.sortBy.toUpperCase()}</span>
-                       <span>${this.transactions.length} ITEMS</span>
-                    </div>
-                    <div class="bg-white divide-y divide-slate-50">
-                        ${this.transactions.map(tx => this._renderTransactionRow(tx)).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Grouped by month for date sorting
         const groupedByMonth = {};
         this.transactions.forEach(tx => {
             const monthKey = tx.date.substring(0, 7);
             if (!groupedByMonth[monthKey]) groupedByMonth[monthKey] = [];
             groupedByMonth[monthKey].push(tx);
         });
-
-        const sortedMonths = Object.entries(groupedByMonth).sort((a,b) => {
-            return this.filters.ascending ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0]);
-        });
+        const sortedMonths = Object.entries(groupedByMonth).sort((a,b) => b[0].localeCompare(a[0]));
 
         return sortedMonths.map(([monthKey, txs]) => {
             const dateObj = new Date(monthKey + '-01');
@@ -611,16 +503,7 @@ window.TransactionsPage = {
                      onmousemove="TransactionsPage.handleMouseMove(event)"
                      onmouseup="TransactionsPage.handleMouseUp(event)"
                      onmouseleave="TransactionsPage.handleMouseUp(event)">
-                    <div class="flex items-center gap-3 px-5 py-4 hover:bg-slate-50 cursor-pointer transition-colors group">
-                        <!-- Checkbox status -->
-                        <div onclick="event.stopPropagation(); TransactionsPage.toggleCheck('${tx.id}')" 
-                             class="w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 
-                             ${tx.is_checked 
-                                ? (tx.is_pending ? 'bg-amber-500 border-amber-500 text-white' : 'bg-emerald-400 border-emerald-400 text-white') 
-                                : 'border-slate-200 bg-white group-hover:border-slate-300'}">
-                            ${tx.is_checked ? '<i data-lucide="check" class="w-4 h-4 stroke-[3]"></i>' : ''}
-                        </div>
-                        
+                    <div class="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 cursor-pointer transition-colors group">
                         <div class="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style="background-color: ${color}15; color: ${color}">
                             <i data-lucide="${icon}" class="w-5 h-5"></i>
                         </div>
@@ -640,67 +523,6 @@ window.TransactionsPage = {
                 </div>
             </div>
         `;
-    },
-
-    // ===== BATCH ACTIONS & CHECK LOGIC =====
-
-    toggleCheck(txId) {
-        const tx = this.transactions.find(t => t.id === txId);
-        if (!tx) return;
-
-        tx.is_checked = !tx.is_checked;
-        this.pendingCheckedStates[txId] = tx.is_checked;
-        tx.is_pending = true;
-
-        this.updateHeaderActions();
-        this.refreshListOnly();
-    },
-
-    batchCheck(checked) {
-        this.transactions.forEach(tx => {
-            tx.is_checked = checked;
-            tx.is_pending = true;
-            this.pendingCheckedStates[tx.id] = checked;
-        });
-        this.updateHeaderActions();
-        this.refreshListOnly();
-    },
-
-    async saveBulkChanges() {
-        const ids = Object.keys(this.pendingCheckedStates);
-        if (ids.length === 0) return;
-
-        const updates = ids.map(id => ({
-            id: id,
-            user_id: this.userId,
-            is_checked: this.pendingCheckedStates[id]
-        }));
-
-        Toast.show(`Saving ${updates.length} items...`, 'info');
-        
-        const { error } = await DB.bulkUpdateTransactions(updates);
-        
-        if (error) {
-            Toast.show('Error saving changes', 'error');
-        } else {
-            Toast.show('Successfully saved', 'success');
-            this.pendingCheckedStates = {};
-            this.refresh();
-        }
-    },
-
-    refreshListOnly() {
-        const container = document.getElementById('tx-list-container');
-        if (container) {
-            container.innerHTML = this._renderList();
-            if (window.lucide) lucide.createIcons();
-        }
-        // Also update search container for the Save button
-        const searchContainer = document.getElementById('tx-search-container');
-        if (searchContainer) {
-            searchContainer.innerHTML = this._renderFilters();
-            if (window.lucide) lucide.createIcons();
-        }
     },
 
     // ===== MODAL LOGIC =====
@@ -987,10 +809,10 @@ window.TransactionsPage = {
 
         modal.innerHTML = `
             <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm modal-backdrop" onclick="TransactionsPage.closeModal()"></div>
-            <div class="fixed bottom-0 left-0 right-0 md:top-0 md:bottom-0 md:left-0 md:right-0 md:mx-auto md:w-full md:max-w-xl bg-[#f8f9fa] rounded-t-[2rem] md:rounded-none shadow-2xl overflow-hidden z-10 animate-fade-in-up h-[92vh] md:h-screen flex flex-col">
+            <div class="absolute bottom-0 left-0 right-0 md:top-0 md:bottom-0 md:left-0 md:right-0 md:mx-auto md:w-full md:max-w-xl bg-[#f8f9fa] rounded-t-[2rem] md:rounded-none shadow-2xl overflow-hidden z-10 animate-fade-in-up md:h-screen md:max-h-screen flex flex-col">
                 
                 <!-- HEADER -->
-                <div class="${active.headerBg} px-4 py-4 flex items-center justify-between text-white shadow-md shrink-0">
+                <div class="${active.headerBg} px-4 py-4 flex items-center justify-between text-white shadow-md">
                     <div class="flex items-center gap-4">
                         <button onclick="TransactionsPage.closeModal()" class="p-1 hover:bg-white/20 rounded-full transition-colors">
                             <i data-lucide="arrow-left" class="w-6 h-6"></i>
@@ -1003,8 +825,7 @@ window.TransactionsPage = {
                     </div>
                 </div>
 
-                <!-- SCROLLABLE CONTENT -->
-                <div class="flex-1 overflow-y-auto p-5 space-y-6">
+                <div class="p-5 space-y-6 overflow-y-auto">
                     <!-- SECTION 1: AMOUNT & CATEGORY -->
                     <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-5">
                         <div class="flex items-start justify-between gap-4">
@@ -1131,41 +952,41 @@ window.TransactionsPage = {
 
                         <!-- Checked Switch -->
                         <div class="flex items-center justify-between pl-14">
-                            <span class="text-sm font-medium text-slate-500">Checked</span>
+                            <span class="text-sm font-medium text-slate-500">Checked <span class="text-[10px] text-slate-300">(กำลังพัฒนา)</span></span>
                             <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="m-checked" class="sr-only peer" ${tx.is_checked ? 'checked' : ''}>
+                                <input type="checkbox" class="sr-only peer">
                                 <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:${active.headerBg.replace('bg-', 'bg')}"></div>
                             </label>
                         </div>
                     </div>
 
                     <!-- SECTION 3: SCHEDULE -->
-                    <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center justify-between opacity-60">
+                    <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
                         <div class="flex items-center gap-4">
                             <i data-lucide="calendar-clock" class="w-6 h-6 text-slate-400"></i>
-                            <span class="text-sm font-medium text-slate-700">Scheduled ${tx.type === 'transfer' ? 'transfer' : 'expense'} <i data-lucide="pickaxe" class="w-3.5 h-3.5 text-amber-500 inline-block ml-1"></i></span>
+                            <span class="text-sm font-medium text-slate-700">Scheduled ${tx.type === 'transfer' ? 'transfer' : 'expense'} <span class="text-[10px] text-slate-300 ml-1">(กำลังพัฒนา)</span></span>
                         </div>
-                        <label class="relative inline-flex items-center cursor-not-allowed">
-                            <input type="checkbox" class="sr-only peer" disabled>
-                            <div class="w-11 h-6 bg-slate-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
                         </label>
                     </div>
 
                     <!-- ATTACHMENTS -->
-                    <div class="grid grid-cols-2 gap-4 pb-4 opacity-50">
-                        <button disabled class="flex items-center justify-center gap-2 py-3 border border-slate-200 rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-not-allowed">
-                            <i data-lucide="pickaxe" class="w-4 h-4 text-amber-500"></i>
+                    <div class="grid grid-cols-2 gap-4 pb-4">
+                        <button class="flex items-center justify-center gap-2 py-3 border border-slate-300 rounded-full text-[10px] font-bold text-slate-600 uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                            <i data-lucide="camera" class="w-5 h-5"></i>
                             Camera
                         </button>
-                        <button disabled class="flex items-center justify-center gap-2 py-3 border border-slate-200 rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-not-allowed">
-                            <i data-lucide="pickaxe" class="w-4 h-4 text-amber-500"></i>
+                        <button class="flex items-center justify-center gap-2 py-3 border border-slate-300 rounded-full text-[10px] font-bold text-slate-600 uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                            <i data-lucide="folder" class="w-5 h-5"></i>
                             Attach
                         </button>
                     </div>
                 </div>
 
                 <!-- FOOTER BUTTONS -->
-                <div class="p-6 bg-white border-t border-slate-100 grid grid-cols-2 gap-4 shrink-0">
+                <div class="p-6 bg-white border-t border-slate-100 grid grid-cols-2 gap-4">
                     <button onclick="TransactionsPage.closeModal()" 
                             class="py-4 border border-slate-300 rounded-full font-bold text-slate-500 hover:bg-slate-50 active:scale-95 transition-all">
                         CANCEL
@@ -1341,8 +1162,7 @@ window.TransactionsPage = {
 
         const txData = { 
             amount, account_id: accountId, category_id: categoryId, 
-            note, from_or_to: fromTo, date, type, user_id: this.userId,
-            is_checked: document.getElementById('m-checked')?.checked || false
+            note, from_or_to: fromTo, date, type, user_id: this.userId 
         };
 
         try {
@@ -1360,9 +1180,8 @@ window.TransactionsPage = {
                 this.refresh();
             }
         } catch (err) {
-            console.error('Save error details:', err);
-            const errorMsg = err.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
-            Toast.show(errorMsg, 'error');
+            console.error('Save error:', err);
+            Toast.show('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
         }
     },
 
@@ -1477,104 +1296,6 @@ window.TransactionsPage = {
         const container = document.getElementById('page-content');
         if (container) {
             container.innerHTML = await this.render(this.userId);
-            if (window.lucide) lucide.createIcons();
-        }
-    },
-
-    async exportToCSV() {
-        try {
-            if (this.totalCount === 0) {
-                Toast.show('ไม่พบข้อมูลสำหรับการ Export', 'warning');
-                return;
-            }
-
-            Toast.show('กำลังเตรียมไฟล์ CSV...', 'info');
-            
-            // 1. Fetch ALL data matching current filters (ignore pagination)
-            const exportFilters = {
-                ...this.filters,
-                limit: 50000, 
-                page: 1
-            };
-            
-            const session = await Auth.getSession();
-            const { data } = await DB.getTransactions(session.user.id, exportFilters);
-            
-            if (!data || data.length === 0) {
-                Toast.show('ไม่พบข้อมูล', 'warning');
-                return;
-            }
-
-            // 2. Format CSV Header & Rows
-            const headers = ['Date', 'Type', 'Category', 'Account', 'To_Account', 'From/To', 'Note', 'Amount', 'Checked'];
-            const rows = data.map(tx => [
-                tx.date,
-                tx.type,
-                tx.categories?.name || '-',
-                tx.accounts?.name || '-',
-                tx.to_accounts?.name || '-', 
-                tx.from_or_to || '-',
-                tx.note || '-',
-                tx.amount,
-                tx.is_checked ? 'Checked' : 'Unchecked'
-            ]);
-
-            // 3. Convert to CSV String
-            const csvContent = [
-                headers.join(','),
-                ...rows.map(row => row.map(val => {
-                    const str = String(val === null || val === undefined ? '' : val);
-                    return `"${str.replace(/"/g, '""')}"`;
-                }).join(','))
-            ].join('\n');
-
-            // 4. Handle Thai Encoding (UTF-8 BOM)
-            const BOM = '\uFEFF';
-            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            
-            // 5. Trigger Download
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            const dateStr = new Date().toISOString().split('T')[0];
-            link.setAttribute('href', url);
-            link.setAttribute('download', `transactions_export_${dateStr}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            Toast.show('Export สำเร็จ', 'success');
-        } catch (error) {
-            console.error('Export Error:', error);
-            Toast.show('เกิดข้อผิดพลาดในการ Export', 'error');
-        }
-    },
-
-    _renderHeaderActions() {
-        return `
-            <!-- Save Button (Only show when pending changes) -->
-            ${Object.keys(this.pendingCheckedStates).length > 0 ? `
-                <button onclick="TransactionsPage.saveBulkChanges()" 
-                  class="flex items-center gap-2 px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg animate-pulse mr-1 active:scale-95 transition-all">
-                  <i data-lucide="save" class="w-4 h-4"></i> SAVE
-                </button>
-            ` : ''}
-            
-            <button onclick="TransactionsPage.toggleSearch()" 
-                class="p-2 text-white hover:bg-white/10 rounded-full transition-colors">
-                <i data-lucide="search" class="w-5 h-5"></i>
-            </button>
-            <button onclick="TransactionsPage.openModal()"
-                class="bg-white/20 hover:bg-white/30 text-white w-9 h-9 rounded-full flex items-center justify-center transition-colors">
-                <i data-lucide="plus" class="w-5 h-5"></i>
-            </button>
-        `;
-    },
-
-    updateHeaderActions() {
-        const container = document.getElementById('tx-header-actions');
-        if (container) {
-            container.innerHTML = this._renderHeaderActions();
             if (window.lucide) lucide.createIcons();
         }
     }

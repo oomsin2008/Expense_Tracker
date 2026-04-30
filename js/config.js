@@ -3,56 +3,11 @@
 // เปลี่ยนค่า 2 ตัวนี้เป็นของ project คุณเอง
 // ===================================================
 
-const DEFAULT_SUPABASE_URL = 'https://uvqvscadftgyohbbjhct.supabase.co';       // ← เปลี่ยนตรงนี้
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2cXZzY2FkZnRneW9oYmJqaGN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTUzMjUsImV4cCI6MjA5MTI5MTMyNX0.ujiWNsQiwymc27btYHNQLoK0ojaG_10YPJRv8hEpkT0';  // ← เปลี่ยนตรงนี้
-
-const isLocalHost = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname) || window.location.hostname.endsWith('.local');
-
-const safeStorageRead = (key) => {
-  try {
-    return localStorage.getItem(key) || '';
-  } catch {
-    return '';
-  }
-};
-
-window.AppEnv = {
-  mode: isLocalHost ? 'local' : 'production',
-  isLocalHost,
-  hostname: window.location.hostname,
-  origin: window.location.origin
-};
-
-window.AppConfig = {
-  supabaseUrl: isLocalHost
-    ? safeStorageRead('expense_tracker_supabase_url') || DEFAULT_SUPABASE_URL
-    : DEFAULT_SUPABASE_URL,
-  supabaseAnonKey: isLocalHost
-    ? safeStorageRead('expense_tracker_supabase_anon_key') || DEFAULT_SUPABASE_ANON_KEY
-    : DEFAULT_SUPABASE_ANON_KEY
-};
+const SUPABASE_URL = 'https://uvqvscadftgyohbbjhct.supabase.co';       // ← เปลี่ยนตรงนี้
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2cXZzY2FkZnRneW9oYmJqaGN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTUzMjUsImV4cCI6MjA5MTI5MTMyNX0.ujiWNsQiwymc27btYHNQLoK0ojaG_10YPJRv8hEpkT0';  // ← เปลี่ยนตรงนี้
 
 // ใช้ชื่อ supabaseClient แทน supabase เพื่อไม่ให้ชนกับ CDN
-const supabaseClient = window.supabase.createClient(window.AppConfig.supabaseUrl, window.AppConfig.supabaseAnonKey);
-
-// Helper สำหรับสร้าง URL ของหน้าในแอป
-// ใช้ path แบบ relative เพื่อให้รันได้ทั้ง Live Server, Vercel และโฮสต์ที่อยู่ใน subfolder
-window.AppUrl = {
-  resolve(path = '') {
-    const normalizedPath = String(path).replace(/^\//, '');
-    return new URL(normalizedPath, window.location.href).toString();
-  },
-  currentPage() {
-    const page = window.location.pathname.split('/').pop() || 'index.html';
-    return page;
-  },
-  index() {
-    return this.resolve('index.html');
-  },
-  dashboard() {
-    return this.resolve('dashboard.html');
-  }
-};
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const Theme = {
   color(varName, fallback = '') {

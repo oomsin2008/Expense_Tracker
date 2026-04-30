@@ -340,76 +340,8 @@ const SettingsPage = {
               </p>
             </div>
           </div>
-
-          <!-- การตั้งค่ารายงาน -->
-          <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-100 lg:col-span-2">
-            <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
-              <i data-lucide="line-chart" class="w-4 h-4 text-purple-500"></i> ตั้งค่ารายงาน
-            </h3>
-            <div class="flex items-center justify-between mb-6">
-                <p class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">เลือกหมวดหมู่รายรับสำหรับกราฟแนวโน้ม</p>
-                <button onclick="SettingsPage.resetReportIncomeCatSelection()" class="text-xs font-medium text-blue-500 hover:underline">รีเซ็ต</button>
-            </div>
-            <div id="report-income-cat-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              ${this._renderReportIncomeCatSelector()}
-            </div>
-          </div>
         </div>
       `;
-  },
-
-  _renderReportIncomeCatSelector() {
-      const incomeCats = this.categories.filter(c => c.type === 'income');
-      const incomeTree = DB.buildCategoryTree(incomeCats);
-      const selectedIds = JSON.parse(localStorage.getItem('REPORT_INCOME_TREND_CATS') || '[]');
-
-      const subCategoryGroups = incomeTree.filter(root => root.children && root.children.length > 0);
-
-      if (subCategoryGroups.length === 0) {
-          return `
-            <div class="col-span-full text-center py-8 text-slate-400 text-sm">
-                ไม่มีหมวดหมู่ย่อยประเภทรายรับ<br>
-                <a href="#" onclick="SettingsPage.switchTab('categories')" class="text-blue-500 hover:underline">สร้างหมวดหมู่ย่อยก่อน</a>
-            </div>
-          `;
-      }
-
-      return subCategoryGroups.map((root, groupIndex) => {
-          const childrenHtml = root.children.map(sub => {
-              const isSelected = selectedIds.includes(sub.id);
-              return `
-                  <label class="flex items-center gap-3 p-3 border border-slate-100 rounded-xl hover:bg-slate-50 cursor-pointer transition-all group">
-                      <input type="checkbox" 
-                             ${isSelected ? 'checked' : ''} 
-                             onchange="SettingsPage.toggleReportIncomeCat('${sub.id}', this.checked)"
-                             class="w-5 h-5 rounded border-slate-300 text-purple-500 focus:ring-purple-500">
-                      <div class="flex items-center gap-2 min-w-0">
-                          <div class="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style="background-color:${sub.color}15">
-                              <i data-lucide="${this._safeIcon(sub.icon)}" class="w-3.5 h-3.5" style="color:${sub.color}"></i>
-                          </div>
-                          <span class="text-sm font-bold text-slate-700 group-hover:text-slate-900 truncate">${sub.name}</span>
-                      </div>
-                  </label>
-              `;
-          }).join('');
-
-          return `
-            <div class="col-span-1 sm:col-span-2 md:col-span-3">
-                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ${groupIndex > 0 ? 'mt-4' : ''} px-1">${root.name}</h4>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    ${childrenHtml}
-                </div>
-            </div>
-          `;
-      }).join('');
-  },
-
-  refreshReportIncomeCatSelector() {
-      const container = document.getElementById('report-income-cat-list');
-      if (container) {
-          container.innerHTML = this._renderReportIncomeCatSelector();
-          lucide.createIcons();
-      }
   },
 
   async saveProfile() {
@@ -441,26 +373,6 @@ const SettingsPage = {
     if (window.applyMenuVisibility) {
       window.applyMenuVisibility();
     }
-  },
-
-  toggleReportIncomeCat(categoryId, isChecked) {
-      let selectedIds = JSON.parse(localStorage.getItem('REPORT_INCOME_TREND_CATS') || '[]');
-      
-      if (isChecked) {
-          if (!selectedIds.includes(categoryId)) {
-              selectedIds.push(categoryId);
-          }
-      } else {
-          selectedIds = selectedIds.filter(id => id !== categoryId);
-      }
-
-      localStorage.setItem('REPORT_INCOME_TREND_CATS', JSON.stringify(selectedIds));
-      this.refreshReportIncomeCatSelector();
-  },
-
-  resetReportIncomeCatSelection() {
-      localStorage.removeItem('REPORT_INCOME_TREND_CATS');
-      this.refreshReportIncomeCatSelector();
   },
 
   // ===== TAB: ACCOUNTS MANAGEMENT =====
@@ -719,38 +631,17 @@ const SettingsPage = {
             <!-- Import Section -->
             <div class="pt-4 border-t border-slate-100">
               <h4 class="text-sm font-bold text-slate-700 mb-3">นำเข้าข้อมูล (Import CSV)</h4>
-
+              
               <div class="bg-amber-50 rounded-xl p-4 mb-4">
                 <p class="text-xs font-bold text-amber-800 mb-2">ตัวเลือกการนำเข้า:</p>
                 <div class="space-y-2">
-                  <!-- Append (default) -->
                   <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="csv-import-mode" value="append" checked
-                      class="w-4 h-4 accent-amber-600"
-                      onchange="document.getElementById('csv-dup-options').classList.remove('hidden')">
-                    <span class="text-xs text-amber-900 font-medium">เพิ่มต่อจากเดิม (Append)</span>
-                  </label>
-
-                  <!-- Duplicate handling sub-options -->
-                  <div id="csv-dup-options" class="ml-6 space-y-1.5 pl-3 border-l-2 border-amber-200">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="csv-dup-mode" value="skip" checked
-                        class="w-3.5 h-3.5 accent-amber-500">
-                      <span class="text-xs text-amber-700">ข้ามรายการซ้ำ <span class="text-amber-500">(Skip — ค่าเริ่มต้น)</span></span>
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="csv-dup-mode" value="overwrite"
-                        class="w-3.5 h-3.5 accent-amber-500">
-                      <span class="text-xs text-amber-700">เขียนทับรายการซ้ำ <span class="text-amber-500">(Overwrite — อัปเดต Note)</span></span>
-                    </label>
-                  </div>
-
-                  <!-- Delete All -->
-                  <label class="flex items-center gap-2 cursor-pointer pt-1 border-t border-amber-100 mt-1">
-                    <input type="radio" name="csv-import-mode" value="delete"
-                      class="w-4 h-4 accent-amber-600"
-                      onchange="document.getElementById('csv-dup-options').classList.add('hidden')">
+                    <input type="radio" name="csv-import-mode" value="delete" class="w-4 h-4 text-amber-600 border-amber-300">
                     <span class="text-xs text-amber-900 font-medium">ลบข้อมูลเดิมทั้งหมด (Delete All)</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="csv-import-mode" value="append" checked class="w-4 h-4 text-amber-600 border-amber-300">
+                    <span class="text-xs text-amber-900 font-medium">เพิ่มต่อจากเดิม / เขียนทับถ้าซ้ำ</span>
                   </label>
                 </div>
               </div>
@@ -1124,9 +1015,6 @@ const SettingsPage = {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
     const mode = document.querySelector('input[name="csv-import-mode"]:checked').value;
-    const dupMode = mode === 'append'
-      ? (document.querySelector('input[name="csv-dup-mode"]:checked')?.value || 'skip')
-      : 'skip';
 
     const types = [];
     if (document.getElementById('csv-type-categories').checked) types.push('categories');
@@ -1155,20 +1043,18 @@ const SettingsPage = {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const result = await DB.importFromCSV(this.userId, e.target.result, types, mode === 'delete', dupMode);
+        const result = await DB.importFromCSV(this.userId, e.target.result, types, mode === 'delete');
         if (result.error) {
           Toast.show('นำเข้าล้มเหลว: ' + result.error, 'error');
         } else {
           let message = `✅ นำเข้าสำเร็จ!\n- ${result.summary}`;
-
+          
           let alertDetails = `สรุปผลการนำเข้า:\n-------------------\n${result.summary.split(', ').join('\n')}\n`;
+          
+          const hasSkipped = result.skipped && result.skipped.length > 0;
+          const hasDups = result.duplicates && result.duplicates.length > 0;
 
-          const hasSkipped    = result.skipped     && result.skipped.length > 0;
-          const hasDups       = result.duplicates  && result.duplicates.length > 0;
-          const hasOverwritten = result.overwritten && result.overwritten.length > 0;
-          const needsAlert    = hasSkipped || hasDups || hasOverwritten;
-
-          if (needsAlert) {
+          if (hasSkipped || hasDups) {
             console.group('CSV Import Report');
             if (hasSkipped) {
               console.log('Skipped (Error):', result.skipped);
@@ -1176,20 +1062,16 @@ const SettingsPage = {
             }
             if (hasDups) {
               console.log('Duplicates (Skipped):', result.duplicates);
-              alertDetails += `\n⚠️ พบรายการซ้ำ: ${result.duplicates.length} รายการ (ถูกข้าม)`;
-            }
-            if (hasOverwritten) {
-              console.log('Overwritten:', result.overwritten);
-              alertDetails += `\n✏️ เขียนทับรายการซ้ำ: ${result.overwritten.length} รายการ (อัปเดตแล้ว)`;
+              alertDetails += `\n⚠️ พบข้อมูลซ้ำซ้อน: ${result.duplicates.length} รายการ (ถูกข้าม)`;
             }
             console.groupEnd();
 
-            alert(`${message}\n\n${alertDetails}\n\n* ท่านสามารถดูรายละเอียดได้ใน Console (กด F12)`);
+            alert(`${message}\n\n${alertDetails}\n\n* ท่านสามารถดูรายละเอียดบรรทัดที่ซ้ำหรือผิดพลาดได้ใน Console (กด F12)`);
           } else {
             Toast.show(message, 'success');
           }
-
-          setTimeout(() => location.reload(), needsAlert ? 3000 : 1500);
+          
+          setTimeout(() => location.reload(), (hasSkipped || hasDups) ? 3000 : 1500);
         }
       } catch (err) {
         console.error(err);

@@ -189,8 +189,7 @@ const DB = {
       dateTo = null,
       accountType = null,
       search = null,
-      sortBy = options.sortBy !== undefined ? options.sortBy : 'amount', // Default to 'amount' if not provided
-      ascending = options.ascending !== undefined ? options.ascending : (options.type === 'expense'), // Default based on type if not provided
+      ascending = false,
       onProgress = null // Callback สำหรับรายงานความคืบหน้า (loaded, total)
     } = options;
 
@@ -200,24 +199,11 @@ const DB = {
         .select(`
             *,
             accounts:account_id (name, color, type),
-            categories:category_id (id, name, icon, color)
+            categories:category_id (name, icon, color)
           `, { count: 'exact' })
-        .eq('user_id', userId);
-
-      // Apply primary sorting
-      if (sortBy === 'account_name') {
-        query = query.order('name', { foreignTable: 'accounts', ascending: ascending });
-      } else if (sortBy === 'category_name') {
-        query = query.order('name', { foreignTable: 'categories', ascending: ascending });
-      } else {
-        query = query.order(sortBy, { ascending: ascending }); // sortBy is now guaranteed to have a value
-      }
-
-      // secondary sort for consistency
-      if (sortBy !== 'date') {
-        query = query.order('date', { ascending: false });
-      }
-      query = query.order('created_at', { ascending: false });
+        .eq('user_id', userId)
+        .order('date', { ascending: ascending })
+        .order('created_at', { ascending: ascending });
 
       if (accountId) {
         if (Array.isArray(accountId)) query = query.in('account_id', accountId);
@@ -314,7 +300,6 @@ const DB = {
       .single();
 
     if (error) {
-      console.error('updateTransaction Error Details:', error);
       await this._updateAccountBalance(oldTx.account_id, oldTx.type, oldTx.amount, 'add');
       return { data: null, error };
     }
@@ -345,23 +330,6 @@ const DB = {
       'reverse'
     );
     return { error: reverseResult?.error || null };
-  },
-
-  async bulkUpdateTransactions(updates) {
-    // ใช้ Promise.all เพื่ออัปเดตแต่ละรายการแยกกัน
-    // การใช้ update() จะอนุญาตให้ส่งเฉพาะฟิลด์ที่ต้องการเปลี่ยนได้โดยไม่ติด Not-Null constraint ของฟิลด์อื่น
-    const promises = updates.map(item => 
-      supabaseClient
-        .from('transactions')
-        .update({ is_checked: item.is_checked })
-        .eq('id', item.id)
-    );
-
-    const results = await Promise.all(promises);
-    const firstError = results.find(r => r.error);
-    
-    if (firstError) console.error('bulkUpdateTransactions error:', firstError.error);
-    return { data: results.map(r => r.data), error: firstError?.error };
   },
 
   async _updateAccountBalance(accountId, type, amount, action) {
@@ -458,62 +426,6 @@ const DB = {
   async deleteBudget(id) {
     const { error } = await supabaseClient.from('budgets').update({ is_active: false }).eq('id', id);
     return { error };
-  },
-
-  // Server-side aggregation ด้วย RPC — คืนแค่ ~20-50 rows แทนที่จะดึง raw transactions ทั้งหมด
-  async getSpendingByCategory(userId, dateFrom, dateTo) {
-    const { data, error } = await supabaseClient
-      .rpc('get_spending_by_category', {
-        p_user_id: userId,
-        p_date_from: dateFrom,
-        p_date_to: dateTo,
-      });
-    if (error) {
-      console.error('getSpendingByCategory RPC:', error);
-      return [];
-    }
-    return (data || []).map(row => ({
-      category_id: row.category_id,
-      categories: {
-        id: row.category_id,
-        name: row.cat_name,
-        icon: row.cat_icon,
-        color: row.cat_color,
-        parent_id: row.cat_parent_id,
-      },
-      total: Number(row.total),
-      txCount: Number(row.tx_count),
-    }));
-  },
-
-  // ดึง min/max ปีของธุรกรรมโดยใช้ RPC (คืน 1 row แทนการดึง 100k records)
-  async getTransactionYearRange(userId) {
-    const { data, error } = await supabaseClient
-      .rpc('get_transaction_year_range', { p_user_id: userId });
-    if (error) {
-      console.error('getTransactionYearRange RPC:', error);
-      return null;
-    }
-    return data?.[0] || null;
-  },
-
-  // รวมค่าใช้จ่ายต่อ category ต่อปี ด้วย RPC — คืน ~100 rows แทนการดึง raw transactions หลายแสน rows
-  async getAnnualSpendingByCategory(userId, yearFrom, yearTo) {
-    const { data, error } = await supabaseClient
-      .rpc('get_annual_spending_by_category', {
-        p_user_id: userId,
-        p_year_from: yearFrom,
-        p_year_to: yearTo,
-      });
-    if (error) {
-      console.error('getAnnualSpendingByCategory RPC:', error);
-      return null; // null = RPC ยังไม่ถูก deploy → caller จะ fallback ไปดึง raw transactions
-    }
-    return data || [];
-  },
-
-  async getHistoricalSpendingByCategory(userId, dateFrom, dateTo) {
-    return this.getSpendingByCategory(userId, dateFrom, dateTo);
   },
 
   // =========================
@@ -984,7 +896,7 @@ const DB = {
     return csvContent;
   },
 
-  async importFromCSV(userId, csvText, types, deleteExisting, dupMode = 'skip') {
+  async importFromCSV(userId, csvText, types, deleteExisting) {
     try {
       let summary = [];
       const sections = csvText.split('--- ');
@@ -1008,7 +920,6 @@ const DB = {
 
       let allSkipped = [];
       let allDuplicates = [];
-      let allOverwritten = [];
 
       if (types.includes('categories') && sectionData.categories) {
         const res = await this.importCategoriesFromCSV(userId, sectionData.categories, deleteExisting);
@@ -1023,12 +934,11 @@ const DB = {
         if (res.duplicates) allDuplicates.push(...res.duplicates);
       }
       if (types.includes('transactions') && sectionData.transactions) {
-        const res = await this.importTransactionsFromCSV(userId, sectionData.transactions, deleteExisting, dupMode);
+        const res = await this.importTransactionsFromCSV(userId, sectionData.transactions, deleteExisting);
         if (res.error) throw res.error;
-        summary.push(`ธุรกรรม: ${res.count} นำเข้า${res.overwritten?.length ? `, ${res.overwritten.length} เขียนทับ` : ''}`);
+        summary.push(`ธุรกรรม: ${res.count}`);
         if (res.skipped) allSkipped.push(...res.skipped);
         if (res.duplicates) allDuplicates.push(...res.duplicates);
-        if (res.overwritten) allOverwritten.push(...res.overwritten);
       }
       if (types.includes('budgets') && sectionData.budgets) {
         const res = await this.importBudgetsFromCSV(userId, sectionData.budgets, deleteExisting);
@@ -1041,12 +951,11 @@ const DB = {
         summary.push(`รายการล่วงหน้า: ${res.count}`);
       }
       
-      return {
-        summary: summary.join(', '),
-        success: true,
-        skipped: allSkipped,
-        duplicates: allDuplicates,
-        overwritten: allOverwritten
+      return { 
+        summary: summary.join(', '), 
+        success: true, 
+        skipped: allSkipped, 
+        duplicates: allDuplicates 
       };
     } catch (err) {
       console.error('importFromCSV Error:', err);
@@ -1128,7 +1037,7 @@ const DB = {
   },
 
 
-  async importTransactionsFromCSV(userId, csvText, deleteExisting, dupMode = 'skip') {
+  async importTransactionsFromCSV(userId, csvText, deleteExisting) {
     try {
       const rows = ExportUtil.parseCSV(csvText);
       if (!rows || rows.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์ CSV');
@@ -1167,10 +1076,8 @@ const DB = {
       }
       
       const toInsert = [];
-      const toUpdate = [];    // เก็บรายการที่จะ overwrite { id, note, from_or_to }
       const skippedRows = []; // เก็บข้อมูลแถวที่ผิดพลาด
-      const duplicates = [];  // เก็บรายการที่ซ้ำ (skip mode)
-      const overwritten = []; // เก็บรายการที่เขียนทับ (overwrite mode)
+      const duplicates = [];  // เก็บรายการที่ซ้ำ
       
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -1309,34 +1216,18 @@ const DB = {
 
         // 4. ตรวจสอบรายการซ้ำ (Duplicate Detection)
         if (!deleteExisting && existingTxs) {
-          if (dupMode === 'overwrite') {
-            // Overwrite: match by date + amount + type + account + category (ไม่เช็ค note)
-            const existingMatch = existingTxs.find(tx =>
-              tx.date === date &&
-              parseFloat(tx.amount) === absAmount &&
-              tx.type === type &&
-              tx.account_id === acc.id &&
-              tx.category_id === catId
-            );
-            if (existingMatch) {
-              toUpdate.push({ id: existingMatch.id, note: finalNote, from_or_to: fromTo });
-              overwritten.push({ line: csvLineNumber, data: row, reason: 'เขียนทับรายการซ้ำ' });
-              continue;
-            }
-          } else {
-            // Skip (default): exact match รวม note
-            const isDup = existingTxs.some(tx =>
-              tx.date === date &&
-              parseFloat(tx.amount) === absAmount &&
-              tx.type === type &&
-              tx.account_id === acc.id &&
-              tx.category_id === catId &&
-              (tx.note || '').trim() === finalNote.trim()
-            );
-            if (isDup) {
-              duplicates.push({ line: csvLineNumber, data: row, reason: 'รายการซ้ำซ้อน' });
-              continue;
-            }
+          const isDup = existingTxs.some(tx => 
+            tx.date === date && 
+            parseFloat(tx.amount) === absAmount && 
+            tx.type === type && 
+            tx.account_id === acc.id &&
+            tx.category_id === catId &&
+            (tx.note || '').trim() === finalNote.trim()
+          );
+          
+          if (isDup) {
+            duplicates.push({ line: csvLineNumber, data: row, reason: 'รายการซ้ำซ้อน' });
+            continue;
           }
         }
 
@@ -1352,16 +1243,6 @@ const DB = {
         });
       }
       
-      // อัปเดตรายการที่ overwrite ทีละรายการ
-      if (toUpdate.length > 0) {
-        for (const upd of toUpdate) {
-          await supabaseClient
-            .from('transactions')
-            .update({ note: upd.note, from_or_to: upd.from_or_to })
-            .eq('id', upd.id);
-        }
-      }
-
       if (toInsert.length > 0) {
         // แบ่งการนำเข้าเป็นชุดๆ (Chunking) เพื่อป้องกันปัญหา Payload ใหญ่เกินไป หรือ Timeout
         const CHUNK_SIZE = 500;
@@ -1386,7 +1267,7 @@ const DB = {
 
       const uniqueAccIds = [...new Set(toInsert.map(t => t.account_id))];
       for (const id of uniqueAccIds) await this.recalculateAccountBalance(id);
-      return { success: true, count: toInsert.length, skipped: skippedRows, duplicates, overwritten };
+      return { success: true, count: toInsert.length, skipped: skippedRows, duplicates: duplicates };
     } catch (err) {
       console.error('importTransactionsFromCSV error:', err);
       return { error: err };

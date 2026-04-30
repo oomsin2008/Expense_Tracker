@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Expense Tracker v4</title>
+  <title>Expense Tracker v3</title>
 
   <!-- TailwindCSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -34,7 +34,7 @@
 
   <!-- ========== MOBILE HEADER (ซ่อนบน desktop) ========== -->
   <header
-    class="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-30 px-4 py-3 flex items-center justify-between">
+    class="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-30 px-4 py-3 flex items-center justify-between">
     <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
       <i data-lucide="menu" class="w-5 h-5 text-slate-600"></i>
     </button>
@@ -43,7 +43,7 @@
   </header>
 
   <!-- ========== SIDEBAR OVERLAY (mobile only) ========== -->
-  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/30 z-30 lg:hidden" onclick="toggleSidebar()"></div>
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/30 z-30 md:hidden" onclick="toggleSidebar()"></div>
 
   <!-- ========== SIDEBAR ========== -->
   <aside id="sidebar"
@@ -121,8 +121,8 @@
   </aside>
 
   <!-- ========== MAIN CONTENT ========== -->
-  <main class="lg:ml-60 pt-14 lg:pt-0 min-h-screen transition-all duration-300">
-    <div id="page-content" class="p-2 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+  <main class="md:ml-60 pt-14 md:pt-0 min-h-screen">
+    <div id="page-content" class="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
 
       <!-- แต่ละ page จะถูก render ตรงนี้โดย navigate() -->
       <div class="page-transition">
@@ -256,77 +256,9 @@
       await new Promise(r => setTimeout(r, 150));
     }
 
-    function renderBudgetLoading(progress = 12, stage = 'กำลังโหลดข้อมูลงบประมาณ') {
-      const pct = Math.max(5, Math.min(100, Math.round(progress)));
-      const stepIndex = pct < 35 ? 0 : pct < 70 ? 1 : 2;
-      const steps = [
-        { label: 'งบปัจจุบัน', detail: 'กำลังคำนวณยอดใช้จริง' },
-        { label: 'แนะนำงบ', detail: 'กำลังสรุปรายการย้อนหลัง' },
-        { label: 'เปรียบเทียบ', detail: 'กำลังเตรียมกราฟและตาราง' },
-      ];
-
-      return `
-        <div class="page-transition">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 class="text-2xl font-bold text-slate-800">Budgets</h1>
-              <p class="text-sm text-slate-500 mt-1">${stage}</p>
-            </div>
-            <div class="inline-flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2.5 rounded-lg font-medium text-sm">
-              <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-              ${pct}% กำลังโหลด
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6">
-            <div class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-3">
-              <span>${stage}</span>
-              <span>${pct}%</span>
-            </div>
-            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-500 to-emerald-500 transition-all duration-300" style="width:${pct}%"></div>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-              ${steps.map((step, idx) => `
-                <div class="rounded-2xl border p-4 ${idx === stepIndex ? 'border-blue-200 bg-blue-50/70' : 'border-slate-100 bg-slate-50/50'}">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${idx <= stepIndex ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-500'}">${idx + 1}</span>
-                    <span class="text-sm font-semibold text-slate-700">${step.label}</span>
-                  </div>
-                  <p class="text-xs text-slate-500">${step.detail}</p>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            ${[1,2,3].map((n) => `
-              <div class="bg-white rounded-xl shadow-sm p-5 border border-slate-100 animate-pulse">
-                <div class="h-3 w-24 bg-slate-100 rounded mb-4"></div>
-                <div class="h-8 w-32 bg-slate-100 rounded mb-2"></div>
-                <div class="h-3 bg-slate-100 rounded" style="width:${48 + (n * 12)}%"></div>
-              </div>
-            `).join('')}
-          </div>
-
-          <div class="bg-white rounded-xl shadow-sm p-5 border border-slate-100">
-            <div class="flex items-center justify-between mb-4">
-              <div class="h-4 w-40 bg-slate-100 rounded animate-pulse"></div>
-              <div class="h-4 w-24 bg-slate-100 rounded animate-pulse"></div>
-            </div>
-            <div class="space-y-3">
-              ${[1,2,3,4].map(() => `
-                <div class="h-16 rounded-2xl bg-slate-50 animate-pulse"></div>
-              `).join('')}
-            </div>
-          </div>
-        </div>`;
-    }
-
     async function navigate(page, updateHash = true) {
       if (navigating) return;
       navigating = true;
-      let delayedSpinner = null;
 
       // บันทึกหน้าปัจจุบันลง hash (ถ้าไม่ใช่การเรียกจาก popstate)
       if (updateHash) {
@@ -371,50 +303,12 @@
         closeSidebar();
         await fadeOutCurrent(content);
         content.innerHTML = '';
-        delayedSpinner = setTimeout(() => {
+        const delayedSpinner = setTimeout(() => {
           if (content.children.length > 0 || content.innerHTML.trim() !== '') return;
-          if (page === 'budgets') {
-            content.innerHTML = `
-              <div class="page-transition">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                  <div>
-                    <h1 class="text-2xl font-bold text-slate-800">Budgets</h1>
-                    <p class="text-sm text-slate-500 mt-1">กำลังโหลดข้อมูลงบประมาณ...</p>
-                  </div>
-                  <div class="inline-flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2.5 rounded-lg font-medium text-sm">
-                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-                    กำลังโหลด
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                  ${[1,2,3].map(() => `
-                    <div class="bg-white rounded-xl shadow-sm p-5 border border-slate-100 animate-pulse">
-                      <div class="h-3 w-24 bg-slate-100 rounded mb-4"></div>
-                      <div class="h-8 w-32 bg-slate-100 rounded mb-2"></div>
-                      <div class="h-3 w-20 bg-slate-100 rounded"></div>
-                    </div>
-                  `).join('')}
-                </div>
-
-                <div class="bg-white rounded-xl shadow-sm p-5 border border-slate-100">
-                  <div class="flex items-center justify-between mb-4">
-                    <div class="h-4 w-40 bg-slate-100 rounded animate-pulse"></div>
-                    <div class="h-4 w-24 bg-slate-100 rounded animate-pulse"></div>
-                  </div>
-                  <div class="space-y-3">
-                    ${[1,2,3,4].map(() => `
-                      <div class="h-16 rounded-2xl bg-slate-50 animate-pulse"></div>
-                    `).join('')}
-                  </div>
-                </div>
-              </div>`;
-          } else {
-            content.innerHTML = `
-              <div class="flex items-center justify-center min-h-[60vh] text-slate-400">
-                <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
-              </div>`;
-          }
+          content.innerHTML = `
+      <div class="flex items-center justify-center min-h-[60vh] text-slate-400">
+        <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
+      </div>`;
           lucide.createIcons();
         }, 250);
 
@@ -440,15 +334,7 @@
             html = await TransactionsPage.render(userId, currentPage);
             break;
           case 'budgets':
-            content.innerHTML = renderBudgetLoading(10, 'เริ่มโหลดข้อมูลงบประมาณ');
-            lucide.createIcons();
-            await new Promise(requestAnimationFrame);
-            html = await BudgetsPage.render(userId, {
-              onProgress: (progress, stage) => {
-                content.innerHTML = renderBudgetLoading(progress, stage);
-                lucide.createIcons();
-              }
-            });
+            html = await BudgetsPage.render(userId);
             break;
           case 'schedules':
             html = await SchedulesPage.render(userId);

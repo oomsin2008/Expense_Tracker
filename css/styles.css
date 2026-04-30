@@ -151,8 +151,8 @@ textarea:focus {
   animation: shimmer 2s infinite linear;
 }
 
-/* Sidebar mobile — ซ่อนบน mobile, แสดงบน desktop (LG: 1024px+) */
-@media (max-width: 1023px) {
+/* Sidebar mobile — ซ่อนบน mobile, แสดงบน desktop */
+@media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
     transition: transform 0.3s ease-in-out;
